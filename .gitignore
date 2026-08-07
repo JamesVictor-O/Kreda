@@ -1,0 +1,33 @@
+# env
+.env
+.env.local
+*.env
+!.env.example
+
+# node
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+*.tsbuildinfo
+.turbo/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+contracts/lib/
+
+# editors / os
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
