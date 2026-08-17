@@ -1,70 +1,99 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 
-/// @notice Records a signed underwriting decision and a reference to the
-/// off-chain evidence blob behind it. The decline path is a first-class
-/// record here, not an error case — declines write a decision with no
-/// vault or funding attached.
-contract Attestation is Ownable {
-    enum Outcome {
-        Declined,
-        Approved
+/// @notice The underwriting record — approvals and declines committed with
+/// the same struct. A decline carries advanceRate zero and never gets a
+/// vault, but the record and its evidence reference persist. See
+/// CLAUDE.md: the decline path is a first-class output, not an error case.
+///
+/// @dev submit() is deliberately not access-gated by msg.sender — anyone
+/// may relay a record, including a sponsored/gasless relayer. What gates
+/// it is a valid EIP-712 signature from a registered agent over the exact
+/// record being committed.
+contract Attestation is EIP712 {
+    using ECDSA for bytes32;
+
+    struct Record {
+        bytes32 receivableId;
+        address seller;
+        uint256 faceValue;
+        uint8 grade;
+        uint16 advanceRate; // basis points
+        uint64 expectedSettlement;
+        uint16 confidence; // basis points
+        bytes32 evidenceRef; // blob commitment
+        address agent;
+        bool approved;
     }
 
-    struct Decision {
-        address agent;
-        address seller;
-        Outcome outcome;
-        uint16 confidenceBps; // 0-10000
-        bytes32 evidenceHash; // hash of the evidence blob (checks run, inputs seen)
-        string evidenceURI; // pointer to the evidence blob
-        uint64 timestamp;
-    }
+    bytes32 public constant RECORD_TYPEHASH = keccak256(
+        "Record(bytes32 receivableId,address seller,uint256 faceValue,uint8 grade,uint16 advanceRate,uint64 expectedSettlement,uint16 confidence,bytes32 evidenceRef,address agent,bool approved)"
+    );
 
     AgentRegistry public immutable agentRegistry;
 
-    mapping(bytes32 => Decision) public decisions;
+    /// @dev Keyed by receivableId, which doubles as the attestationId
+    /// returned from submit() — at most one attestation per receivable,
+    /// ever, which is also the anti-replay check.
+    mapping(bytes32 => Record) private records;
+    mapping(bytes32 => bool) public submitted;
 
-    event DecisionCommitted(
-        bytes32 indexed receivableId, address indexed agent, address indexed seller, Outcome outcome
+    event AttestationSubmitted(
+        bytes32 indexed attestationId, address indexed agent, address indexed seller, bool approved
     );
 
     error AgentNotRegistered();
-    error DecisionAlreadyCommitted();
+    error AlreadySubmitted();
+    error InvalidSignature();
+    error ZeroReceivableId();
 
-    constructor(address initialOwner, address agentRegistryAddress) Ownable(initialOwner) {
+    constructor(address agentRegistryAddress) EIP712("Kreda Attestation", "1") {
         agentRegistry = AgentRegistry(agentRegistryAddress);
     }
 
-    function commitDecision(
-        bytes32 receivableId,
-        address agent,
-        address seller,
-        Outcome outcome,
-        uint16 confidenceBps,
-        bytes32 evidenceHash,
-        string calldata evidenceURI
-    ) external {
-        if (!agentRegistry.isRegistered(agent)) revert AgentNotRegistered();
-        if (decisions[receivableId].timestamp != 0) revert DecisionAlreadyCommitted();
+    /// @notice Commits a signed underwriting decision on-chain.
+    /// @dev attestationId is the record's receivableId — dedup and lookup
+    /// share one key, so a receivableId can only ever be attested once.
+    /// @param r The decision, approved or declined.
+    /// @param signature EIP-712 signature over `r` from `r.agent`.
+    /// @return attestationId The id the record was stored under.
+    function submit(Record calldata r, bytes calldata signature) external returns (bytes32 attestationId) {
+        if (r.receivableId == bytes32(0)) revert ZeroReceivableId();
+        if (submitted[r.receivableId]) revert AlreadySubmitted();
+        if (!agentRegistry.isRegistered(r.agent)) revert AgentNotRegistered();
 
-        decisions[receivableId] = Decision({
-            agent: agent,
-            seller: seller,
-            outcome: outcome,
-            confidenceBps: confidenceBps,
-            evidenceHash: evidenceHash,
-            evidenceURI: evidenceURI,
-            timestamp: uint64(block.timestamp)
-        });
+        bytes32 structHash = keccak256(
+            abi.encode(
+                RECORD_TYPEHASH,
+                r.receivableId,
+                r.seller,
+                r.faceValue,
+                r.grade,
+                r.advanceRate,
+                r.expectedSettlement,
+                r.confidence,
+                r.evidenceRef,
+                r.agent,
+                r.approved
+            )
+        );
+        address signer = _hashTypedDataV4(structHash).recoverCalldata(signature);
+        if (signer != r.agent) revert InvalidSignature();
 
-        emit DecisionCommitted(receivableId, agent, seller, outcome);
+        submitted[r.receivableId] = true;
+        records[r.receivableId] = r;
+
+        agentRegistry.recordDecision(r.agent, r.approved);
+
+        emit AttestationSubmitted(r.receivableId, r.agent, r.seller, r.approved);
+        return r.receivableId;
     }
 
-    function getDecision(bytes32 receivableId) external view returns (Decision memory) {
-        return decisions[receivableId];
+    function get(bytes32 attestationId) external view returns (Record memory) {
+        return records[attestationId];
     }
 }
