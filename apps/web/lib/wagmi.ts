@@ -5,6 +5,7 @@ import { botChainMainnet, botChainTestnet } from "./chains";
 export const wagmiConfig = createConfig({
   chains: [botChainTestnet, botChainMainnet],
   connectors: [injected()],
+  ssr: true,
   transports: {
     [botChainTestnet.id]: http(),
     [botChainMainnet.id]: http(),
