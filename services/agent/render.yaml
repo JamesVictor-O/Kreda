@@ -1,0 +1,32 @@
+# Render Blueprint — see https://render.com/docs/blueprint-spec.
+# If you deploy via "New > Web Service" instead of "New > Blueprint",
+# use these same values in the dashboard's Settings tab.
+services:
+  - type: web
+    name: kreda-agent
+    runtime: python
+    rootDir: services/agent
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: KREDA_DATA_PROVIDER
+        value: fixture
+      - key: TESTNET_RPC_URL
+        value: https://rpc.bohr.life
+      - key: CHAIN_ID
+        value: "968"
+      - key: ATTESTATION_CONTRACT_ADDRESS
+        value: "0xF7602C048F8C7Cc5E8c514522D633eb9A16a3a1B"
+      - key: AGENT_REGISTRY_CONTRACT_ADDRESS
+        value: "0xc2B0D2A7e858F13B349843fF87dBF4EBF9227F49"
+      # Secrets and deploy-time-only values — set these in the dashboard,
+      # not here. AGENT_PRIVATE_KEY: copy from your local .env, never from
+      # a chat log. CORS_ALLOWED_ORIGINS: fill in after the Vercel deploy
+      # in Phase 1 gives you the frontend's real origin.
+      - key: AGENT_PRIVATE_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
