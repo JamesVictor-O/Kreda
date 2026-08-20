@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
-import { AGENT_STATS, UNDERWRITER_AGENT } from "@/lib/dashboard/agent";
+import { useReadContract } from "wagmi";
+import { UNDERWRITER_AGENT } from "@/lib/dashboard/agent";
 import { HashLink } from "@/components/dashboard/hash-link";
+import { agentRegistryAbi } from "@/lib/contracts/abis";
+import { TESTNET_CHAIN_ID, contractAddresses } from "@/lib/contracts/addresses";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -11,8 +16,27 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Real AgentRegistry.agentStats() read — see contracts/src/AgentRegistry.sol.
+ * `accurate` doubles as "settled and repaid in full": Settlement.confirmPayout()
+ * only ever calls recordOutcome(agent, true) in v1 (no default-tracking path
+ * yet), so the two numbers are the same thing on-chain today. */
 export function UnderwriterCard() {
-  const hasTrackRecord = AGENT_STATS.settledCount > 0;
+  const addresses = contractAddresses(TESTNET_CHAIN_ID);
+
+  const { data, isLoading, isError } = useReadContract({
+    address: addresses.agentRegistry as `0x${string}`,
+    abi: agentRegistryAbi,
+    functionName: "agentStats",
+    args: [addresses.agent as `0x${string}`],
+    chainId: TESTNET_CHAIN_ID,
+  });
+
+  const zero = BigInt(0);
+  const [decisions, , declines, accurate] = data ?? [zero, zero, zero, zero];
+  const decisionsCount = Number(decisions);
+  const declinedCount = Number(declines);
+  const settledCount = Number(accurate);
+  const hasTrackRecord = settledCount > 0;
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
@@ -21,25 +45,29 @@ export function UnderwriterCard() {
           <h2 className="text-lg font-semibold text-foreground">Underwriter</h2>
           <p className="mt-0.5 font-mono text-sm text-muted-foreground">{UNDERWRITER_AGENT.name}</p>
         </div>
-        <HashLink label="Agent registry" hash={UNDERWRITER_AGENT.registryAddress} />
+        <HashLink label="Agent registry" hash={addresses.agentRegistry} />
       </div>
 
-      <dl className="mt-5 grid grid-cols-3 gap-x-4 gap-y-4">
-        <Stat label="Decisions" value={String(AGENT_STATS.decisionsCount)} />
-        <Stat label="Declined" value={String(AGENT_STATS.declinedCount)} />
-        <Stat
-          label="Repaid in full"
-          value={
-            hasTrackRecord ? `${AGENT_STATS.settledRepaidInFullCount}/${AGENT_STATS.settledCount}` : "—"
-          }
-        />
-      </dl>
+      {isError ? (
+        <p className="mt-5 text-sm text-danger">Couldn&apos;t read agent stats from the registry.</p>
+      ) : (
+        <dl className="mt-5 grid grid-cols-3 gap-x-4 gap-y-4">
+          <Stat label="Decisions" value={isLoading ? "…" : String(decisionsCount)} />
+          <Stat label="Declined" value={isLoading ? "…" : String(declinedCount)} />
+          <Stat
+            label="Repaid in full"
+            value={isLoading ? "…" : hasTrackRecord ? `${settledCount}/${settledCount}` : "—"}
+          />
+        </dl>
+      )}
 
-      <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-        {hasTrackRecord
-          ? `Small sample — ${AGENT_STATS.settledCount} receivable${AGENT_STATS.settledCount === 1 ? "" : "s"} settled so far, all repaid in full. No default rate is claimed until there's enough history for one to mean anything.`
-          : "No settled receivables yet, so there's no track record to show. A placeholder accuracy figure would be worse than none."}
-      </p>
+      {!isLoading && !isError && (
+        <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+          {hasTrackRecord
+            ? `Small sample — ${settledCount} receivable${settledCount === 1 ? "" : "s"} settled so far, all repaid in full. No default rate is claimed until there's enough history for one to mean anything.`
+            : "No settled receivables yet, so there's no track record to show. A placeholder accuracy figure would be worse than none."}
+        </p>
+      )}
 
       <Link
         href="/investor/activity#declines"

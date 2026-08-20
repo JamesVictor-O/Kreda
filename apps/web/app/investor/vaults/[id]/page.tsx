@@ -7,6 +7,8 @@ import { DepositPanel } from "@/components/dashboard/vault/deposit-panel";
 import { UnderwriterCard } from "@/components/dashboard/vault/underwriter-card";
 import { AttestationArtifact } from "@/components/dashboard/attestation-artifact";
 import { IconArrowLeft } from "@/components/ui/icons";
+import { REAL_VAULT_RECEIVABLE_ID, getRealVaultOffering } from "@/lib/contracts/real-vault";
+import type { VaultOffering } from "@/lib/dashboard/types";
 
 export default async function VaultDetailPage({
   params,
@@ -14,7 +16,19 @@ export default async function VaultDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const vault = getVaultById(id);
+
+  // The one receivable with a real on-chain vault reads live from
+  // Attestation.get() and the vault's own state — see
+  // lib/contracts/real-vault.ts. Every other id stays on fixtures.
+  let vault: VaultOffering | undefined;
+  let gradeLabel: string | undefined;
+  if (id === REAL_VAULT_RECEIVABLE_ID) {
+    const real = await getRealVaultOffering();
+    vault = real;
+    gradeLabel = real.gradeLabel;
+  } else {
+    vault = getVaultById(id);
+  }
   if (!vault) notFound();
 
   return (
@@ -39,7 +53,7 @@ export default async function VaultDetailPage({
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 {vault.storeName}
               </h1>
-              <GradeBadge confidenceBps={vault.decision.confidenceBps} />
+              <GradeBadge confidenceBps={vault.decision.confidenceBps} grade={gradeLabel} />
             </div>
           </div>
           <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">

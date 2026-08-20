@@ -1,8 +1,20 @@
 import { cn } from "@/lib/cn";
 import { gradeFromConfidence } from "@/lib/dashboard/grade";
 
-export function GradeBadge({ confidenceBps }: { confidenceBps: number }) {
-  const grade = gradeFromConfidence(confidenceBps);
+/** `grade` overrides the confidence-derived letter when the real,
+ * authoritative on-chain grade (Attestation.Record.grade) is known — a
+ * fallback-graded decision can have a genuinely low confidence (honest)
+ * alongside a fixed, approved grade (also honest); confidence alone would
+ * mislabel it. Fixtures don't pass this and keep deriving from confidence,
+ * same as before. */
+export function GradeBadge({
+  confidenceBps,
+  grade: gradeOverride,
+}: {
+  confidenceBps: number;
+  grade?: string;
+}) {
+  const grade = gradeOverride ?? gradeFromConfidence(confidenceBps);
   const strong = confidenceBps >= 7_500;
 
   return (
