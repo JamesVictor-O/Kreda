@@ -147,7 +147,7 @@ forge script script/Deploy.s.sol --rpc-url testnet --broadcast --private-key $DE
 
 This is a working system built in a short window, and it is more useful to be exact about what that means than to imply otherwise.
 
-**Shopify only.** Amazon SP-API approval takes weeks. The ingestion layer is written against an interface so additional platforms are additive, but only Shopify is implemented.
+**Shopify only.** Amazon SP-API approval takes weeks. The ingestion layer is written against an interface so additional platforms are additive. Two providers exist: a real one against the Shopify Admin GraphQL API, and a fixture provider serving generated snapshots against the same schema. The Shopify provider hasn't been run against a live store — the demo and the test suite run on the fixture provider. See `services/agent/README.md`.
 
 **Settlement reads a signed payout attestation** from the connected store, not a decentralised oracle. This is the largest trust assumption in the system. A production version needs either a decentralised feed or a legal assignment enforceable off-chain; neither is present here.
 
