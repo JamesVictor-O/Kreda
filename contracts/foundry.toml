@@ -21,8 +21,11 @@ fs_permissions = [
 testnet = "${TESTNET_RPC_URL}"
 mainnet = "${MAINNET_RPC_URL}"
 
-[etherscan]
-testnet = { key = "${EXPLORER_API_KEY}", chain = 968, url = "https://scan.bohr.life/api" }
-mainnet = { key = "${EXPLORER_API_KEY}", chain = 677, url = "https://scan.botchain.ai/api" }
+# No [etherscan] block: chain 968/677 aren't in foundry-block-explorers'
+# known-chain list, and declaring them here makes forge fail every
+# `forge script` run (even without --verify) with "Chain 968 not supported".
+# Verify with explicit CLI flags instead, e.g.:
+#   forge verify-contract --chain 968 --verifier-url https://scan.bohr.life/api \
+#     --etherscan-api-key $EXPLORER_API_KEY <address> <contract>
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
