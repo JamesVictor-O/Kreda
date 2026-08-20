@@ -1,0 +1,26 @@
+{
+  "chainId": 968,
+  "asset": {
+    "address": "0x75edC9335175Fc0552D51D48439F229c10420fe3",
+    "symbol": "USDT",
+    "decimals": 6,
+    "note": "BOT Chain testnet faucet-issued test USDT (verified contract on scan.bohr.life), not a Kreda-deployed mock."
+  },
+  "vaults": [
+    {
+      "receivableId": "3460eb5efce28ce5",
+      "attestationId": "0xf1ddb47602dead14122a958a812f28f5e64fea24a6e1d521a7accfb18087c66a",
+      "vault": "0xCdC7Bc596C72E4Ff4c8c23B11eeEcb23cA9C97C0",
+      "name": "Kreda Receivable #1",
+      "symbol": "kRCV-1",
+      "seller": "0xa28fa4955E02450b0D9D1e2d01C5edD28dc5DC30",
+      "targetAmount": "1031840500",
+      "yieldBps": 1100,
+      "feeBps": 200,
+      "maturity": 1789784369,
+      "store": "harlow-and-finch.myshopify.com (fixture)",
+      "grade": "A",
+      "attestationTxHash": "0x16c3fd5719fb5644905b4151d35f3eabe2dff698c2586d72f040cd0388983af9"
+    }
+  ]
+}
