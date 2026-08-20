@@ -1,17 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatBps, formatCurrency, daysUntil } from "@/lib/dashboard/format";
 import { estimateInvestorPosition } from "@/lib/dashboard/calc";
 import { gradeFromConfidence } from "@/lib/dashboard/grade";
-import { OPEN_VAULTS } from "@/lib/dashboard/fixtures";
+import { getAllRealVaultOfferings } from "@/lib/contracts/real-vault";
 import type { VaultOffering } from "@/lib/dashboard/types";
 import { GradeBadge } from "@/components/dashboard/grade-badge";
 import { VaultFillMeter } from "@/components/dashboard/vault/fill-meter";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ButtonLink } from "@/components/ui/button";
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; vaults: VaultOffering[] };
 
 type GradeFilter = "all" | "A" | "B+" | "B" | "C/D";
 type DurationFilter = "all" | "short" | "medium" | "long";
@@ -38,9 +43,9 @@ const REMAINING_OPTIONS: { label: string; value: RemainingFilter }[] = [
   { label: "$10k+ remaining", value: "over10k" },
 ];
 
-function gradeBucket(confidenceBps: number): GradeFilter {
-  const grade = gradeFromConfidence(confidenceBps);
-  return grade === "C" || grade === "D" ? "C/D" : (grade as GradeFilter);
+function gradeBucket(confidenceBps: number, gradeOverride?: string): GradeFilter {
+  const grade = gradeOverride ?? gradeFromConfidence(confidenceBps);
+  return grade === "C" || grade === "D" || grade === "DECLINE" ? "C/D" : (grade as GradeFilter);
 }
 
 function durationBucket(days: number): DurationFilter {
@@ -83,7 +88,7 @@ function FilterGroup<T extends string>({
   );
 }
 
-function VaultRow({ vault }: { vault: VaultOffering }) {
+function VaultRow({ vault }: { vault: VaultOffering & { gradeLabel?: string } }) {
   const position = estimateInvestorPosition(vault.faceValue);
   const days = daysUntil(vault.expectedSettlementAt);
 
@@ -96,7 +101,7 @@ function VaultRow({ vault }: { vault: VaultOffering }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm text-foreground">#{vault.receivableId}</span>
-            <GradeBadge confidenceBps={vault.decision.confidenceBps} />
+            <GradeBadge confidenceBps={vault.decision.confidenceBps} grade={vault.gradeLabel} />
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">{vault.storeName}</p>
         </div>
@@ -143,15 +148,38 @@ export default function VaultsPage() {
   const [grade, setGrade] = useState<GradeFilter>("all");
   const [duration, setDuration] = useState<DurationFilter>("all");
   const [remaining, setRemaining] = useState<RemainingFilter>("all");
+  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    getAllRealVaultOfferings()
+      .then((vaults) => {
+        if (!cancelled) setLoadState({ status: "ready", vaults });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadState({
+            status: "error",
+            message: error instanceof Error ? error.message : "Couldn't load vaults.",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openVaults = useMemo(() => (loadState.status === "ready" ? loadState.vaults : []), [loadState]);
 
   const totalCapacity = useMemo(
-    () => OPEN_VAULTS.reduce((sum, vault) => sum + Math.max(0, vault.targetAmount - vault.raisedAmount), 0),
-    [],
+    () => openVaults.reduce((sum, vault) => sum + Math.max(0, vault.targetAmount - vault.raisedAmount), 0),
+    [openVaults],
   );
 
   const vaults = useMemo(() => {
-    return OPEN_VAULTS.filter((vault) => {
-      if (grade !== "all" && gradeBucket(vault.decision.confidenceBps) !== grade) return false;
+    return openVaults.filter((vault) => {
+      const gradeLabel = "gradeLabel" in vault ? (vault as { gradeLabel?: string }).gradeLabel : undefined;
+      if (grade !== "all" && gradeBucket(vault.decision.confidenceBps, gradeLabel) !== grade) return false;
       if (duration !== "all" && durationBucket(daysUntil(vault.expectedSettlementAt)) !== duration) {
         return false;
       }
@@ -160,7 +188,7 @@ export default function VaultsPage() {
       if (remaining === "over10k" && remainingAmount < 10_000) return false;
       return true;
     });
-  }, [grade, duration, remaining]);
+  }, [openVaults, grade, duration, remaining]);
 
   const filtersActive = grade !== "all" || duration !== "all" || remaining !== "all";
 
@@ -169,10 +197,16 @@ export default function VaultsPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Open vaults</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          {formatCurrency(totalCapacity)} of capacity currently open across {OPEN_VAULTS.length} vault
-          {OPEN_VAULTS.length === 1 ? "" : "s"}.
+          {formatCurrency(totalCapacity)} of capacity currently open across {openVaults.length} vault
+          {openVaults.length === 1 ? "" : "s"}.
         </p>
       </div>
+
+      {loadState.status === "error" && (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          Couldn&apos;t load vaults from chain: {loadState.message}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <FilterGroup label="Grade" options={GRADE_OPTIONS} value={grade} onChange={setGrade} />
@@ -181,7 +215,9 @@ export default function VaultsPage() {
       </div>
 
       <div className="mt-6 rounded-2xl border border-border bg-surface p-3 sm:p-4">
-        {OPEN_VAULTS.length === 0 ? (
+        {loadState.status === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading vaults from chain…</p>
+        ) : openVaults.length === 0 ? (
           <div className="p-4 sm:p-6">
             <EmptyState
               title="No open vaults right now"

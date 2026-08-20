@@ -1,13 +1,26 @@
 import { cn } from "@/lib/cn";
-import { formatCurrency } from "@/lib/dashboard/format";
-import { OVERVIEW_STATS } from "@/lib/dashboard/fixtures";
+import { formatCurrency, daysUntil } from "@/lib/dashboard/format";
+import type { IndexedAttestation } from "@/lib/contracts/indexer";
 
-export function StatRow() {
+/** Real numbers derived from on-chain attestations for the connected
+ * seller — no "available to advance" figure, since that would need a
+ * credit-limit concept the product doesn't have; declined count instead,
+ * since the decline path is real data too, not something to hide. */
+export function StatRow({ attestations }: { attestations: IndexedAttestation[] }) {
+  const approved = attestations.filter((a) => a.approved);
+  const declined = attestations.filter((a) => !a.approved);
+  const totalFaceValue = approved.reduce((sum, a) => sum + a.faceValue, 0);
+
+  const nextSettlementDays = approved
+    .map((a) => daysUntil(a.expectedSettlementAt))
+    .filter((days) => days >= 0)
+    .sort((a, b) => a - b)[0];
+
   const stats = [
-    { label: "Available to advance", value: formatCurrency(OVERVIEW_STATS.availableToAdvance) },
-    { label: "Active advances", value: formatCurrency(OVERVIEW_STATS.activeAdvancesTotal) },
-    { label: "Next settlement", value: `${OVERVIEW_STATS.nextSettlementInDays} days` },
-    { label: "Advances completed", value: String(OVERVIEW_STATS.advancesCompleted) },
+    { label: "Total advanced", value: formatCurrency(totalFaceValue) },
+    { label: "Active advances", value: String(approved.length) },
+    { label: "Next settlement", value: nextSettlementDays !== undefined ? `${nextSettlementDays} days` : "—" },
+    { label: "Declined", value: String(declined.length) },
   ];
 
   return (

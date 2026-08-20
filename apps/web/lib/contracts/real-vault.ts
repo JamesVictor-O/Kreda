@@ -3,44 +3,48 @@ import { getAttestationRecord, getVaultOnChainState } from "@/lib/contracts/read
 import { gradeLabelFromCode } from "@/lib/contracts/grade";
 import type { CheckResult, VaultOffering } from "@/lib/dashboard/types";
 
-/// The one real, on-chain-backed vault currently wired — everything else
-/// on the investor dashboard still runs on lib/dashboard/fixtures.ts. See
-/// contracts/deployments/testnet-vaults.json for how this vault came to
-/// exist: a real underwrite call against the live agent service, a real
-/// signed EIP-712 attestation submitted on-chain, then this vault deployed
-/// against that attestation.
+/// Real, on-chain-backed vaults — everything else on the investor
+/// dashboard still runs on lib/dashboard/fixtures.ts. See
+/// contracts/deployments/testnet-vaults.json for how these came to exist:
+/// a real underwrite call against the live agent service, a real signed
+/// EIP-712 attestation submitted on-chain, then a vault deployed against
+/// that attestation.
 export const REAL_VAULT_RECEIVABLE_ID = TESTNET_VAULTS[0].receivableId;
 
-/// The six check results are real — copied verbatim from the actual
-/// POST /underwrite response for this receivable — but statically embedded
-/// rather than fetched live. Wiring GET /evidence/{ref} to source this
-/// dynamically is Phase 3's job (services/agent's evidence store), not
-/// something Attestation.get() can supply: the contract only stores the
-/// evidenceRef hash, not the check detail behind it.
-const REAL_CHECKS: CheckResult[] = [
-  {
-    name: "fulfilment_coverage",
-    passed: true,
-    detail: "126/128 orders show a delivery scan (98%)",
+/// Per-vault metadata not available from on-chain reads alone — the six
+/// check results are real, copied verbatim from the actual
+/// POST /underwrite response for this receivable, but statically embedded
+/// rather than fetched live (wiring GET /evidence/{ref} to source this
+/// dynamically would need it to still exist in the agent's evidence
+/// store, which Render's ephemeral disk doesn't guarantee — see
+/// services/agent/render.yaml). Keyed by receivableId so adding another
+/// real vault later is additive, not a rewrite.
+const VAULT_METADATA: Record<string, { storeName: string; attestationTx: string; checks: CheckResult[] }> = {
+  "3460eb5efce28ce5": {
+    storeName: "Harlow & Finch",
+    attestationTx: "0x16c3fd5719fb5644905b4151d35f3eabe2dff698c2586d72f040cd0388983af9",
+    checks: [
+      { name: "fulfilment_coverage", passed: true, detail: "126/128 orders show a delivery scan (98%)" },
+      {
+        name: "sales_velocity",
+        passed: true,
+        detail: "45 orders in the last 30 days vs a trailing median of 41.5 over 2 prior 30-day period(s)",
+      },
+      { name: "chargeback_rate", passed: true, detail: "0/128 orders disputed (0.0%)" },
+      { name: "return_rate", passed: true, detail: "2/128 orders refunded (1.6%)" },
+      {
+        name: "address_clustering",
+        passed: true,
+        detail: "Top 10 shipping addresses account for 23/128 orders (18%)",
+      },
+      {
+        name: "synthetic_order_patterns",
+        passed: true,
+        detail: "Composite score 0.11 (timing regularity 0.03, value clustering 0.08, customer reuse 0.23)",
+      },
+    ],
   },
-  {
-    name: "sales_velocity",
-    passed: true,
-    detail: "45 orders in the last 30 days vs a trailing median of 41.5 over 2 prior 30-day period(s)",
-  },
-  { name: "chargeback_rate", passed: true, detail: "0/128 orders disputed (0.0%)" },
-  { name: "return_rate", passed: true, detail: "2/128 orders refunded (1.6%)" },
-  {
-    name: "address_clustering",
-    passed: true,
-    detail: "Top 10 shipping addresses account for 23/128 orders (18%)",
-  },
-  {
-    name: "synthetic_order_patterns",
-    passed: true,
-    detail: "Composite score 0.11 (timing regularity 0.03, value clustering 0.08, customer reuse 0.23)",
-  },
-];
+};
 
 const STABLECOIN_DECIMALS = 6;
 
@@ -48,12 +52,11 @@ function toDollars(raw: bigint): number {
   return Number(raw) / 10 ** STABLECOIN_DECIMALS;
 }
 
-/** Real reads only — Attestation.get() and the vault's own state, both
- * live against BOT Chain testnet. See deposit-panel.tsx for the one real
- * write (ReceivableVault.deposit()). */
-export async function getRealVaultOffering(): Promise<VaultOffering & { gradeLabel: string }> {
-  const vaultConfig = TESTNET_VAULTS[0];
+async function fetchVaultOffering(
+  vaultConfig: (typeof TESTNET_VAULTS)[number],
+): Promise<VaultOffering & { gradeLabel: string }> {
   const addresses = contractAddresses(TESTNET_CHAIN_ID);
+  const metadata = VAULT_METADATA[vaultConfig.receivableId];
 
   const [record, vaultState] = await Promise.all([
     getAttestationRecord(
@@ -67,8 +70,8 @@ export async function getRealVaultOffering(): Promise<VaultOffering & { gradeLab
   const expectedSettlement = new Date(Number(record.expectedSettlement) * 1000);
 
   return {
-    receivableId: REAL_VAULT_RECEIVABLE_ID,
-    storeName: "Harlow & Finch",
+    receivableId: vaultConfig.receivableId,
+    storeName: metadata?.storeName ?? "Unknown store",
     vaultAddress: vaultConfig.vault,
     faceValue: toDollars(record.faceValue),
     targetAmount: toDollars(vaultState.targetAmount),
@@ -76,15 +79,30 @@ export async function getRealVaultOffering(): Promise<VaultOffering & { gradeLab
     expectedSettlementAt: expectedSettlement.toISOString().slice(0, 10),
     gradeLabel,
     decision: {
-      receivableId: REAL_VAULT_RECEIVABLE_ID,
+      receivableId: vaultConfig.receivableId,
       outcome: record.approved ? "approved" : "declined",
       confidenceBps: record.confidence,
       advanceRateBps: record.approved ? record.advanceRate : null,
-      checks: REAL_CHECKS,
+      checks: metadata?.checks ?? [],
       evidenceHash: record.evidenceRef,
-      attestationTx:
-        "0x16c3fd5719fb5644905b4151d35f3eabe2dff698c2586d72f040cd0388983af9",
+      attestationTx: metadata?.attestationTx ?? null,
       decisionBlobHash: record.evidenceRef,
     },
   };
+}
+
+/** Real reads only — Attestation.get() and the vault's own state, both
+ * live against BOT Chain testnet. See deposit-panel.tsx for the one real
+ * write (ReceivableVault.deposit()). */
+export async function getRealVaultOffering(): Promise<VaultOffering & { gradeLabel: string }> {
+  return fetchVaultOffering(TESTNET_VAULTS[0]);
+}
+
+/** Every real vault currently deployed — see TESTNET_VAULTS. There's no
+ * on-chain way to discover these (no factory contract emits a
+ * discoverable event; each is deployed one at a time via
+ * script/DeployVault.s.sol), so this list only grows when that registry
+ * is updated by hand. */
+export async function getAllRealVaultOfferings(): Promise<(VaultOffering & { gradeLabel: string })[]> {
+  return Promise.all(TESTNET_VAULTS.map(fetchVaultOffering));
 }
