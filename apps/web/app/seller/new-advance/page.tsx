@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CONFIRMED_ORDERS, STORE } from "@/lib/dashboard/fixtures";
-import { buildDecision } from "@/lib/dashboard/underwrite";
+import { useAccount } from "wagmi";
+import { fetchStoreOrders, streamUnderwrite, type OrderSummary } from "@/lib/agent-api";
+import { mapApiDecision, storeDisplayName } from "@/lib/agent-api-map";
+import type { UnderwriteStatus } from "@/components/dashboard/new-advance/underwrite-step";
 import type { Decision } from "@/lib/dashboard/types";
 import { Stepper } from "@/components/dashboard/stepper";
 import { SelectStep } from "@/components/dashboard/new-advance/select-step";
@@ -13,15 +15,26 @@ import { SignStep, SignedConfirmation } from "@/components/dashboard/new-advance
 import { AttestationArtifact } from "@/components/dashboard/attestation-artifact";
 import { Button } from "@/components/ui/button";
 
+/// The store this seller session is "connected" to — one of the agent
+/// service's real fixture stores (KREDA_DATA_PROVIDER=fixture), not the
+/// harlow-and-finch store already used for the bootstrap investor-flow
+/// vault (see contracts/deployments/testnet-vaults.json), to keep the two
+/// demo receivables independent.
+const CONNECTED_STORE_ID = "northfield-outfitters.myshopify.com";
+
 type Stage =
+  | { name: "loading-orders" }
+  | { name: "orders-error"; message: string }
   | { name: "select" }
   | { name: "review" }
-  | { name: "underwriting" }
-  | { name: "result"; decision: Decision }
-  | { name: "sign"; decision: Decision }
-  | { name: "signed"; decision: Decision };
+  | { name: "underwriting"; checks: Decision["checks"]; status: UnderwriteStatus; error?: string }
+  | { name: "result"; decision: Decision; faceValue: number }
+  | { name: "sign"; decision: Decision; faceValue: number }
+  | { name: "signed"; decision: Decision; faceValue: number };
 
 const STAGE_INDEX: Record<Stage["name"], number> = {
+  "loading-orders": 0,
+  "orders-error": 0,
   select: 0,
   review: 1,
   underwriting: 2,
@@ -30,21 +43,38 @@ const STAGE_INDEX: Record<Stage["name"], number> = {
   signed: 3,
 };
 
-let receivableCounter = 3100;
-
 export default function NewAdvancePage() {
   const router = useRouter();
+  const { address } = useAccount();
+
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [stage, setStage] = useState<Stage>({ name: "select" });
+  const [stage, setStage] = useState<Stage>({ name: "loading-orders" });
   const [signing, setSigning] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchStoreOrders(CONNECTED_STORE_ID)
+      .then((response) => {
+        if (cancelled) return;
+        setOrders(response.orders);
+        setStage({ name: "select" });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setStage({
+          name: "orders-error",
+          message: error instanceof Error ? error.message : "Couldn't load orders.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selectedOrders = useMemo(
-    () => CONFIRMED_ORDERS.filter((order) => selectedIds.has(order.id)),
-    [selectedIds],
-  );
-  const faceValue = useMemo(
-    () => selectedOrders.reduce((sum, order) => sum + order.amount, 0),
-    [selectedOrders],
+    () => orders.filter((order) => selectedIds.has(order.id)),
+    [orders, selectedIds],
   );
 
   function toggleOrder(id: string) {
@@ -57,49 +87,110 @@ export default function NewAdvancePage() {
   }
 
   function toggleAll() {
-    setSelectedIds((prev) =>
-      prev.size === CONFIRMED_ORDERS.length
-        ? new Set()
-        : new Set(CONFIRMED_ORDERS.map((order) => order.id)),
-    );
+    setSelectedIds((prev) => (prev.size === orders.length ? new Set() : new Set(orders.map((o) => o.id))));
   }
 
-  function handleSubmitForUnderwriting() {
-    setStage({ name: "underwriting" });
-  }
+  async function handleSubmitForUnderwriting() {
+    if (!address) return;
+    setStage({ name: "underwriting", checks: [], status: "checking" });
 
-  function handleUnderwritingComplete() {
-    receivableCounter += 1;
-    const decision = buildDecision(String(receivableCounter), selectedOrders);
-    setStage({ name: "result", decision });
+    try {
+      for await (const event of streamUnderwrite({
+        store_id: CONNECTED_STORE_ID,
+        receivable_ids: selectedOrders.map((o) => o.id),
+        seller_address: address,
+      })) {
+        switch (event.event) {
+          case "check.completed":
+            setStage((prev) =>
+              prev.name === "underwriting"
+                ? {
+                    ...prev,
+                    checks: [
+                      ...prev.checks,
+                      {
+                        name: event.data.name,
+                        passed: event.data.status === "PASS",
+                        detail: event.data.detail,
+                      },
+                    ],
+                  }
+                : prev,
+            );
+            break;
+          case "decide.started":
+            setStage((prev) => (prev.name === "underwriting" ? { ...prev, status: "deciding" } : prev));
+            break;
+          case "commit.completed":
+            setStage((prev) =>
+              prev.name === "underwriting" ? { ...prev, status: "committing" } : prev,
+            );
+            break;
+          case "done":
+            setStage({
+              name: "result",
+              decision: mapApiDecision(event.data.decision, null),
+              faceValue: event.data.decision.face_value,
+            });
+            break;
+          case "error":
+            setStage((prev) =>
+              prev.name === "underwriting"
+                ? { ...prev, status: "error", error: event.data.message }
+                : prev,
+            );
+            break;
+        }
+      }
+    } catch (error) {
+      setStage((prev) =>
+        prev.name === "underwriting"
+          ? {
+              ...prev,
+              status: "error",
+              error: error instanceof Error ? error.message : "Underwriting failed.",
+            }
+          : prev,
+      );
+    }
   }
 
   function handleSign() {
     setSigning(true);
     setTimeout(() => {
       setSigning(false);
-      if (stage.name === "sign") setStage({ name: "signed", decision: stage.decision });
+      if (stage.name === "sign") setStage({ name: "signed", decision: stage.decision, faceValue: stage.faceValue });
     }, 1100);
   }
-
-  const checksForUnderwriting = useMemo(() => {
-    // Recomputed once, right before entering the underwriting stage, so the
-    // check list shown there matches exactly what the result will contain.
-    return selectedOrders.length > 0 ? buildDecision("preview", selectedOrders).checks : [];
-  }, [selectedOrders]);
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-0">
       <h1 className="text-3xl font-semibold tracking-tight text-foreground">New advance</h1>
-      <p className="mt-1.5 text-sm text-muted-foreground">Connected to {STORE.storeName}</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        Connected to {storeDisplayName(CONNECTED_STORE_ID)}
+      </p>
 
       <div className="mt-8">
         <Stepper currentIndex={STAGE_INDEX[stage.name]} />
       </div>
 
       <div className="mt-10">
+        {stage.name === "loading-orders" && (
+          <p className="text-sm text-muted-foreground">Loading orders from the agent service…</p>
+        )}
+
+        {stage.name === "orders-error" && (
+          <div>
+            <p className="text-sm text-danger">{stage.message}</p>
+            <Button type="button" variant="ghost" className="mt-4" onClick={() => router.refresh()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
         {stage.name === "select" && (
           <SelectStep
+            orders={orders}
             selectedIds={selectedIds}
             onToggle={toggleOrder}
             onToggleAll={toggleAll}
@@ -109,14 +200,14 @@ export default function NewAdvancePage() {
 
         {stage.name === "review" && (
           <ReviewStep
-            selectedIds={selectedIds}
+            orders={selectedOrders}
             onBack={() => setStage({ name: "select" })}
             onSubmit={handleSubmitForUnderwriting}
           />
         )}
 
         {stage.name === "underwriting" && (
-          <UnderwriteStep checks={checksForUnderwriting} onComplete={handleUnderwritingComplete} />
+          <UnderwriteStep checks={stage.checks} status={stage.status} errorMessage={stage.error} />
         )}
 
         {stage.name === "result" && (
@@ -133,8 +224,8 @@ export default function NewAdvancePage() {
             <div className="mt-6">
               <AttestationArtifact
                 decision={stage.decision}
-                storeName={STORE.storeName}
-                faceValue={faceValue}
+                storeName={storeDisplayName(CONNECTED_STORE_ID)}
+                faceValue={stage.faceValue}
               />
             </div>
 
@@ -143,7 +234,10 @@ export default function NewAdvancePage() {
                 Back to dashboard
               </Button>
               {stage.decision.outcome === "approved" && (
-                <Button type="button" onClick={() => setStage({ name: "sign", decision: stage.decision })}>
+                <Button
+                  type="button"
+                  onClick={() => setStage({ name: "sign", decision: stage.decision, faceValue: stage.faceValue })}
+                >
                   Continue to sign
                 </Button>
               )}
@@ -154,9 +248,9 @@ export default function NewAdvancePage() {
         {stage.name === "sign" && (
           <SignStep
             decision={stage.decision}
-            faceValue={faceValue}
+            faceValue={stage.faceValue}
             signing={signing}
-            onBack={() => setStage({ name: "result", decision: stage.decision })}
+            onBack={() => setStage({ name: "result", decision: stage.decision, faceValue: stage.faceValue })}
             onSign={handleSign}
           />
         )}
@@ -164,7 +258,7 @@ export default function NewAdvancePage() {
         {stage.name === "signed" && (
           <SignedConfirmation
             decision={stage.decision}
-            faceValue={faceValue}
+            faceValue={stage.faceValue}
             onDone={() => router.push("/seller")}
           />
         )}

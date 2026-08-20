@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/dashboard/format";
 import { estimateAdvance } from "@/lib/dashboard/calc";
-import { CONFIRMED_ORDERS } from "@/lib/dashboard/fixtures";
+import type { OrderSummary } from "@/lib/agent-api";
 import { Button } from "@/components/ui/button";
 import { IconArrowLeft } from "@/components/ui/icons";
 
@@ -16,16 +16,17 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function ReviewStep({
-  selectedIds,
+  orders,
   onBack,
   onSubmit,
+  submitting,
 }: {
-  selectedIds: Set<string>;
+  orders: OrderSummary[];
   onBack: () => void;
   onSubmit: () => void;
+  submitting?: boolean;
 }) {
-  const orders = CONFIRMED_ORDERS.filter((order) => selectedIds.has(order.id));
-  const faceValue = orders.reduce((sum, order) => sum + order.amount, 0);
+  const faceValue = orders.reduce((sum, order) => sum + order.total_amount, 0);
   const estimate = estimateAdvance(faceValue);
 
   return (
@@ -52,23 +53,22 @@ export function ReviewStep({
         <dl className="mt-6 max-h-64 divide-y divide-border overflow-y-auto border-t border-border">
           {orders.map((order) => (
             <div key={order.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-              <dt className="min-w-0 truncate text-foreground">
-                <span className="font-mono">{order.orderNumber}</span>{" "}
-                <span className="text-muted-foreground">· {order.customerName}</span>
-              </dt>
-              <dd className="shrink-0 font-mono text-foreground">{formatCurrency(order.amount)}</dd>
+              <dt className="min-w-0 truncate font-mono text-foreground">{order.id}</dt>
+              <dd className="shrink-0 font-mono text-foreground">
+                {formatCurrency(order.total_amount)}
+              </dd>
             </div>
           ))}
         </dl>
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-4">
-        <Button type="button" variant="ghost" onClick={onBack}>
+        <Button type="button" variant="ghost" onClick={onBack} disabled={submitting}>
           <IconArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back
         </Button>
-        <Button type="button" onClick={onSubmit}>
-          Submit for underwriting
+        <Button type="button" onClick={onSubmit} disabled={submitting} aria-busy={submitting}>
+          {submitting ? "Submitting…" : "Submit for underwriting"}
         </Button>
       </div>
     </div>

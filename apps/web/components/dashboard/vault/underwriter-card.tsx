@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useReadContract } from "wagmi";
-import { UNDERWRITER_AGENT } from "@/lib/dashboard/agent";
 import { HashLink } from "@/components/dashboard/hash-link";
 import { agentRegistryAbi } from "@/lib/contracts/abis";
 import { TESTNET_CHAIN_ID, contractAddresses } from "@/lib/contracts/addresses";
+
+/// Matches AGENT_NAME in contracts/.env at deploy time (see
+/// contracts/script/Deploy.s.sol) — the registered name is fetchable via
+/// AgentRegistry.agents(address).name, but it's a fixed, already-known
+/// constant, not worth a second read alongside agentStats().
+const AGENT_NAME = "Kreda Underwriter v1";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -43,7 +48,7 @@ export function UnderwriterCard() {
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Underwriter</h2>
-          <p className="mt-0.5 font-mono text-sm text-muted-foreground">{UNDERWRITER_AGENT.name}</p>
+          <p className="mt-0.5 font-mono text-sm text-muted-foreground">{AGENT_NAME}</p>
         </div>
         <HashLink label="Agent registry" hash={addresses.agentRegistry} />
       </div>

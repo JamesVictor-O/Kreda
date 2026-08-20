@@ -1,37 +1,79 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/cn";
 import type { CheckResult } from "@/lib/dashboard/types";
 import { IconSpinner } from "@/components/ui/icons";
 
-const STEP_DELAY_MS = 900;
-const SETTLE_DELAY_MS = 700;
+/// Fixed emission order from services/agent/app/stages/check.py's
+/// run_checks() — the agent always runs (and streams) checks in this
+/// order, so "which one is currently running" is just "the first name in
+/// this list not yet in `checks`," no separate index needs to be tracked.
+const CHECK_ORDER = [
+  "fulfilment_coverage",
+  "sales_velocity",
+  "chargeback_rate",
+  "return_rate",
+  "address_clustering",
+  "synthetic_order_patterns",
+] as const;
 
+export type UnderwriteStatus = "checking" | "deciding" | "committing" | "error";
+
+const MILESTONES: { key: "deciding" | "committing"; label: string; runningLabel: string }[] = [
+  { key: "deciding", label: "Underwriting decision", runningLabel: "Weighing the checks…" },
+  { key: "committing", label: "Committing on-chain", runningLabel: "Signing and submitting…" },
+];
+
+function StatusIcon({
+  resolved,
+  pending,
+  failed,
+}: {
+  resolved: boolean;
+  pending: boolean;
+  failed?: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-sm",
+        resolved && !failed && "bg-foreground/[0.06] text-foreground/60",
+        resolved && failed && "bg-danger/10 text-danger",
+        !resolved && pending && "border border-border text-muted-foreground",
+        !resolved && !pending && "border border-border text-muted-foreground",
+      )}
+    >
+      {resolved ? (
+        failed ? (
+          "✗"
+        ) : (
+          "✓"
+        )
+      ) : pending ? (
+        <IconSpinner className="h-4 w-4 animate-spin" />
+      ) : (
+        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      )}
+    </span>
+  );
+}
+
+/** Driven by the real POST /underwrite SSE stream — `checks` grows one at
+ * a time as check.completed events arrive (see lib/agent-api.ts), and
+ * `status` tracks the decide/commit milestones after all six land. No
+ * simulated timing: what's shown is exactly the pipeline's real pace. */
 export function UnderwriteStep({
   checks,
-  onComplete,
+  status,
+  errorMessage,
 }: {
   checks: CheckResult[];
-  onComplete: () => void;
+  status: UnderwriteStatus;
+  errorMessage?: string;
 }) {
-  const reduceMotion = useReducedMotion();
-  const [resolvedCount, setResolvedCount] = useState(0);
-
-  useEffect(() => {
-    const stepDelay = reduceMotion ? 0 : STEP_DELAY_MS;
-    const settleDelay = reduceMotion ? 0 : SETTLE_DELAY_MS;
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    checks.forEach((_, index) => {
-      timers.push(setTimeout(() => setResolvedCount((c) => Math.max(c, index + 1)), stepDelay * (index + 1)));
-    });
-    timers.push(setTimeout(onComplete, stepDelay * checks.length + settleDelay));
-
-    return () => timers.forEach(clearTimeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduceMotion]);
+  const byName = new Map(checks.map((check) => [check.name, check]));
+  const firstUnresolvedIndex = CHECK_ORDER.findIndex((name) => !byName.has(name));
 
   return (
     <div>
@@ -41,39 +83,24 @@ export function UnderwriteStep({
       </p>
 
       <div className="mt-6 divide-y divide-border rounded-2xl border border-border bg-surface p-6 sm:p-8">
-        {checks.map((check, index) => {
-          const resolved = index < resolvedCount;
-          const pending = index === resolvedCount;
+        {CHECK_ORDER.map((name, index) => {
+          const check = byName.get(name);
+          const resolved = Boolean(check);
+          const pending = !resolved && status === "checking" && index === firstUnresolvedIndex;
 
           return (
-            <div key={check.name} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-sm",
-                  resolved && check.passed && "bg-foreground/[0.06] text-foreground/60",
-                  resolved && !check.passed && "bg-danger/10 text-danger",
-                  !resolved && "border border-border text-muted-foreground",
-                )}
-              >
-                {resolved ? (
-                  check.passed ? "✓" : "✗"
-                ) : pending ? (
-                  <IconSpinner className={cn("h-4 w-4", !reduceMotion && "animate-spin")} />
-                ) : (
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                )}
-              </span>
+            <div key={name} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+              <StatusIcon resolved={resolved} pending={pending} failed={check && !check.passed} />
 
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{check.name}</p>
+                <p className="text-sm font-medium text-foreground">{name}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {resolved ? check.detail : pending ? "Checking…" : "Waiting"}
+                  {check ? check.detail : pending ? "Checking…" : "Waiting"}
                 </p>
               </div>
 
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {resolved ? (
+                {check ? (
                   <span className={check.passed ? "text-foreground/60" : "text-danger"}>
                     {check.passed ? "Pass" : "Flag"}
                   </span>
@@ -86,14 +113,42 @@ export function UnderwriteStep({
             </div>
           );
         })}
+
+        {MILESTONES.map(({ key, label, runningLabel }) => {
+          const order: UnderwriteStatus[] = ["checking", "deciding", "committing"];
+          const resolved = order.indexOf(status) > order.indexOf(key);
+          const pending = status === key;
+
+          return (
+            <div key={key} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+              <StatusIcon resolved={resolved} pending={pending} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{label}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {resolved ? "Done" : pending ? runningLabel : "Waiting"}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
+      {status === "error" && (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          {errorMessage ?? "Underwriting failed."}
+        </p>
+      )}
+
       <p aria-live="polite" className="sr-only">
-        {resolvedCount === 0
-          ? "Underwriting started."
-          : resolvedCount < checks.length
-            ? `${resolvedCount} of ${checks.length} checks complete.`
-            : "All checks complete. Preparing result."}
+        {status === "checking"
+          ? `${checks.length} of ${CHECK_ORDER.length} checks complete.`
+          : status === "deciding"
+            ? "All checks complete. Weighing the decision."
+            : status === "committing"
+              ? "Decision made. Committing on-chain."
+              : status === "error"
+                ? "Underwriting failed."
+                : "Underwriting complete."}
       </p>
     </div>
   );
