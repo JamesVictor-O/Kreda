@@ -50,7 +50,7 @@ export function UnderwriterCard() {
           <h2 className="text-lg font-semibold text-foreground">Underwriter</h2>
           <p className="mt-0.5 font-mono text-sm text-muted-foreground">{AGENT_NAME}</p>
         </div>
-        <HashLink label="Agent registry" hash={addresses.agentRegistry} />
+        <HashLink label="Agent registry" hash={addresses.agentRegistry} kind="address" />
       </div>
 
       {isError ? (

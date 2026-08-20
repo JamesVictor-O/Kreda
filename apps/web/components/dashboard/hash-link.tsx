@@ -3,30 +3,42 @@
 import { truncateHash } from "@/lib/dashboard/format";
 import { botChainTestnet } from "@/lib/chains";
 
-/// A 66-char hex string (0x + 64) is a bytes32 — tx hash or attestationId
-/// alike resolve at /tx/ on Blockscout-based explorers. A 42-char one is an
-/// address, which resolves at /address/. Anything else (e.g. an evidence
-/// commitment hash not on chain, or a fixture placeholder) doesn't link.
-function explorerPath(hash: string): string | null {
-  if (!/^0x[0-9a-fA-F]+$/.test(hash)) return null;
-  if (hash.length === 66) return `/tx/${hash}`;
-  if (hash.length === 42) return `/address/${hash}`;
-  return null;
-}
+export type HashKind = "tx" | "address" | "opaque";
 
-/** Renders an on-chain hash linked to the real BOT Chain testnet explorer
- * when it's shaped like a tx hash or address; otherwise inert (e.g. a
- * fixture placeholder hash, which was never a real transaction). */
-export function HashLink({ label, hash }: { label: string; hash: string }) {
-  const path = explorerPath(hash);
+const EXPECTED_LENGTH: Record<Exclude<HashKind, "opaque">, number> = {
+  tx: 66, // 0x + 32-byte tx hash
+  address: 42, // 0x + 20-byte address
+};
 
-  if (!path) {
+/** Renders an on-chain hash. `kind` must be passed explicitly by the
+ * caller — a hash shaped like a tx hash isn't necessarily one (an
+ * Attestation.Record's evidenceRef and attestationId are both bytes32
+ * but neither is a transaction the explorer knows about; the
+ * attestation's actual submission tx is a separate field). Defaults to
+ * "opaque" (never links) so an unwired page passing fixture-placeholder
+ * hashes can't accidentally grow a real-looking link that 404s on the
+ * real explorer. */
+export function HashLink({
+  label,
+  hash,
+  kind = "opaque",
+}: {
+  label: string;
+  hash: string;
+  kind?: HashKind;
+}) {
+  const shapeOk =
+    kind !== "opaque" && /^0x[0-9a-fA-F]+$/.test(hash) && hash.length === EXPECTED_LENGTH[kind];
+
+  if (!shapeOk) {
     return (
       <span title={hash} aria-label={`${label}: ${hash}`} className="font-mono text-sm text-foreground">
         {truncateHash(hash)}
       </span>
     );
   }
+
+  const path = kind === "tx" ? `/tx/${hash}` : `/address/${hash}`;
 
   return (
     <a

@@ -38,10 +38,18 @@ function CheckRow({ label, detail, passed }: { label: string; detail: string; pa
   );
 }
 
-function HashRow({ label, hash }: { label: string; hash: string }) {
+function HashRow({
+  label,
+  hash,
+  kind,
+}: {
+  label: string;
+  hash: string;
+  kind?: "tx" | "address" | "opaque";
+}) {
   return (
     <Row label={label}>
-      <HashLink label={label} hash={hash} />
+      <HashLink label={label} hash={hash} kind={kind} />
     </Row>
   );
 }
@@ -128,7 +136,7 @@ export function AttestationArtifact({
       <dl className="mt-2 divide-y divide-border border-t border-border">
         <HashRow label="Evidence hash" hash={decision.evidenceHash} />
         {approved && decision.attestationTx ? (
-          <HashRow label="Attestation tx" hash={decision.attestationTx} />
+          <HashRow label="Attestation tx" hash={decision.attestationTx} kind="tx" />
         ) : (
           <HashRow label="Decision blob" hash={decision.decisionBlobHash} />
         )}

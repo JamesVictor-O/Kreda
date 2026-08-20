@@ -1,6 +1,8 @@
+"use client";
+
 import { formatCurrency, formatDateTime, formatDate } from "@/lib/dashboard/format";
-import { ACTIVITY_EVENTS } from "@/lib/dashboard/investor";
-import { DECLINED_APPLICATIONS } from "@/lib/dashboard/fixtures";
+import { useInvestorActivity } from "@/lib/contracts/use-investor-activity";
+import { useAllDeclines } from "@/lib/contracts/use-all-declines";
 import type { ActivityEvent, ActivityEventType } from "@/lib/dashboard/types";
 import { HashLink } from "@/components/dashboard/hash-link";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -23,7 +25,7 @@ function EventRow({ event }: { event: ActivityEvent }) {
         {formatCurrency(event.amount)}
       </td>
       <td className="px-4 py-3">
-        <HashLink label={EVENT_LABELS[event.type]} hash={event.txHash} />
+        <HashLink label={EVENT_LABELS[event.type]} hash={event.txHash} kind="tx" />
       </td>
     </tr>
   );
@@ -43,13 +45,19 @@ function EventCard({ event }: { event: ActivityEvent }) {
         <span>{formatDateTime(event.timestamp)}</span>
       </div>
       <div className="mt-2">
-        <HashLink label={EVENT_LABELS[event.type]} hash={event.txHash} />
+        <HashLink label={EVENT_LABELS[event.type]} hash={event.txHash} kind="tx" />
       </div>
     </li>
   );
 }
 
 export default function ActivityPage() {
+  const activityState = useInvestorActivity();
+  const declinesState = useAllDeclines();
+
+  const events = activityState.status === "ready" ? activityState.events : [];
+  const declines = declinesState.status === "ready" ? declinesState.declines : [];
+
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-0">
       <div>
@@ -59,8 +67,16 @@ export default function ActivityPage() {
         </p>
       </div>
 
+      {activityState.status === "error" && (
+        <p role="alert" className="mt-6 text-sm text-danger">
+          Couldn&apos;t load your activity from chain: {activityState.message}
+        </p>
+      )}
+
       <div className="mt-8">
-        {ACTIVITY_EVENTS.length === 0 ? (
+        {activityState.status === "loading" ? (
+          <p className="text-sm text-muted-foreground">Loading activity from chain…</p>
+        ) : events.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-6 sm:p-8">
             <EmptyState
               title="No activity yet"
@@ -94,7 +110,7 @@ export default function ActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {ACTIVITY_EVENTS.map((event) => (
+                  {events.map((event) => (
                     <EventRow key={event.id} event={event} />
                   ))}
                 </tbody>
@@ -102,7 +118,7 @@ export default function ActivityPage() {
             </div>
 
             <ul className="space-y-3 md:hidden">
-              {ACTIVITY_EVENTS.map((event) => (
+              {events.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
             </ul>
@@ -117,8 +133,16 @@ export default function ActivityPage() {
           record.
         </p>
 
+        {declinesState.status === "error" && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            Couldn&apos;t load declines from chain: {declinesState.message}
+          </p>
+        )}
+
         <div className="mt-4 rounded-2xl border border-border bg-surface p-3 sm:p-4">
-          {DECLINED_APPLICATIONS.length === 0 ? (
+          {declinesState.status === "loading" ? (
+            <p className="p-4 text-sm text-muted-foreground sm:p-6">Loading declines from chain…</p>
+          ) : declines.length === 0 ? (
             <div className="p-4 sm:p-6">
               <EmptyState
                 title="No declines on record"
@@ -127,29 +151,24 @@ export default function ActivityPage() {
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {DECLINED_APPLICATIONS.map((application) => (
-                <li key={application.decision.receivableId} className="px-3 py-4 sm:px-4">
+              {declines.map((decline) => (
+                <li key={decline.attestationId} className="px-3 py-4 sm:px-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                     <span className="flex items-baseline gap-2">
-                      <span className="font-mono text-sm text-foreground">
-                        #{application.decision.receivableId}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {application.storeName}
-                      </span>
+                      <HashLink label="Attestation tx" hash={decline.txHash} kind="tx" />
+                      {decline.storeName && (
+                        <span className="text-sm text-muted-foreground">{decline.storeName}</span>
+                      )}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(application.declinedAt)}
+                      {formatDate(decline.committedAt.slice(0, 10))}
                     </span>
                   </div>
                   <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                    {application.decision.declineReason}
+                    {decline.reason ?? "Decision evidence no longer available off-chain."}
                   </p>
                   <div className="mt-2">
-                    <HashLink
-                      label="Decision blob"
-                      hash={application.decision.decisionBlobHash}
-                    />
+                    <HashLink label="Evidence" hash={decline.evidenceRef} />
                   </div>
                 </li>
               ))}

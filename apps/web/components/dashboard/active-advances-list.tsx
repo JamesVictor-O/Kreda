@@ -12,7 +12,7 @@ function AdvanceRow({ attestation }: { attestation: IndexedAttestation }) {
     <li className="px-2 py-3">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2">
-          <HashLink label="Attestation" hash={attestation.attestationId} />
+          <HashLink label="Attestation tx" hash={attestation.txHash} kind="tx" />
           <GradeBadge confidenceBps={attestation.confidenceBps} grade={attestation.gradeLabel} />
         </span>
         <span className="font-mono text-sm font-semibold text-foreground">
