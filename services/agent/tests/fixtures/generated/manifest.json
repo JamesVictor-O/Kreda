@@ -1,0 +1,38 @@
+{
+  "birchmount-supply.myshopify.com": {
+    "display_name": "Birchmount Supply Co.",
+    "file": "healthy_young.json",
+    "scenario": "healthy_young",
+    "seed": 100002
+  },
+  "crestpeak-imports.myshopify.com": {
+    "display_name": "CrestPeak Imports",
+    "file": "fraudulent.json",
+    "scenario": "fraudulent",
+    "seed": 100003
+  },
+  "harlow-and-finch.myshopify.com": {
+    "display_name": "Harlow & Finch",
+    "file": "demo_approved.json",
+    "scenario": "demo_approved",
+    "seed": 100005
+  },
+  "lumen-home-goods.myshopify.com": {
+    "display_name": "Lumen Home Goods",
+    "file": "marginal.json",
+    "scenario": "marginal",
+    "seed": 100004
+  },
+  "northfield-outfitters.myshopify.com": {
+    "display_name": "Northfield Outfitters",
+    "file": "healthy_established.json",
+    "scenario": "healthy_established",
+    "seed": 100001
+  },
+  "westmere-outdoor.myshopify.com": {
+    "display_name": "Westmere Outdoor Co.",
+    "file": "demo_declined.json",
+    "scenario": "demo_declined",
+    "seed": 100006
+  }
+}

@@ -1,27 +1,44 @@
-"""Stage 1: pull the seller's order and fulfilment history from Shopify."""
+"""Stage 1: pull the seller's order history — via whichever StoreDataProvider
+is configured, see app/data_provider — normalize it immediately, and cache
+the snapshot.
 
-import httpx
+Nothing downstream of `ingest()` ever sees a raw Shopify shape — see
+app/shopify/normalize.py — or knows which provider served it, and
+re-underwriting the same store within the cache window doesn't re-fetch.
+"""
+
+from __future__ import annotations
+
+import logging
 
 from app.core.config import settings
-from app.core.models import StoreData
+from app.core.models import StoreSnapshot
+from app.data_provider import StoreDataProvider, get_provider
+from app.storage.snapshot_cache import SnapshotCache
 
-SHOPIFY_API_VERSION = "2025-01"
+logger = logging.getLogger(__name__)
 
 
-async def ingest(seller_address: str) -> StoreData:
-    url = f"https://{settings.shopify_store_domain}/admin/api/{SHOPIFY_API_VERSION}/orders.json"
-    headers = {"X-Shopify-Access-Token": settings.shopify_admin_access_token}
+async def ingest(
+    store_domain: str,
+    *,
+    cache: SnapshotCache | None = None,
+    provider: StoreDataProvider | None = None,
+) -> StoreSnapshot:
+    cache = cache or SnapshotCache()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, params={"status": "any", "limit": 250})
-        response.raise_for_status()
-        orders = response.json()["orders"]
+    cached = cache.get(store_domain)
+    if cached is not None:
+        logger.info("using cached snapshot for %s (ingested %s)", store_domain, cached.ingested_at)
+        return cached
 
-    fulfilled = [o for o in orders if o.get("fulfillment_status") == "fulfilled"]
-
-    return StoreData(
-        seller_address=seller_address,
-        shop_domain=settings.shopify_store_domain,
-        orders_90d=orders,
-        fulfilled_orders_90d=fulfilled,
+    provider = provider or get_provider()
+    snapshot = await provider.fetch_snapshot(store_domain, settings.ingest_window_days)
+    logger.info(
+        "ingested %d orders for %s via %s",
+        len(snapshot.orders),
+        store_domain,
+        type(provider).__name__,
     )
+    cache.put(snapshot)
+    return snapshot
