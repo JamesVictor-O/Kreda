@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 
 from web3 import Web3
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from app.chain.eip712 import AttestationRecordFields
 from app.core.config import settings
@@ -65,7 +66,15 @@ _AGENT_REGISTRY_ABI = [
 
 
 def _client() -> Web3:
-    return Web3(Web3.HTTPProvider(settings.testnet_rpc_url))
+    # BOT Chain is PoSA (the BSC consensus lineage, per CLAUDE.md) —
+    # block headers carry a longer extraData (validator info/signatures)
+    # than plain web3.py's default formatter allows, which otherwise
+    # raises on any call that touches a block (get_transaction_count
+    # included). Without this middleware every write silently can't build
+    # a transaction at all.
+    w3 = Web3(Web3.HTTPProvider(settings.testnet_rpc_url))
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    return w3
 
 
 def submit_attestation(record: AttestationRecordFields, signature: bytes) -> str:
