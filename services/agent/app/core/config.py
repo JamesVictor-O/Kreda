@@ -36,8 +36,16 @@ class Settings(BaseSettings):
     shopify_admin_access_token: str = ""
     shopify_api_version: str = "2025-01"
 
-    # Stage 3 — decide
+    # Stage 3 — decide. "anthropic" (default) or "venice" — see
+    # app/llm/client.py. Only the selected provider's key needs to be set;
+    # the SDK/httpx call also picks up ANTHROPIC_API_KEY directly for
+    # anthropic rather than routing it through settings.
+    llm_provider: str = "anthropic"
     anthropic_model: str = "claude-opus-5"
+    venice_api_key: str = ""
+    # "llama-3-3-70b" per Venice's docs (a "suggested migration target");
+    # verify against Venice's own /models listing before relying on it.
+    venice_model: str = "llama-3-3-70b"
 
     # Stage 4 — commit. "calldata_hash_tree" is the default because whether
     # chain 677 accepts user-submitted blob transactions is an open question
