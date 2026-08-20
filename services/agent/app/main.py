@@ -22,7 +22,7 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/health/config")
-async def health_config() -> dict[str, bool | str]:
+async def health_config() -> dict[str, bool | str | int]:
     """Whether required config is present, never the values themselves —
     for verifying a deploy's environment without exposing secrets. Cheap
     to leave in: booleans and non-sensitive settings only."""
