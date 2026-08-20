@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.models import CheckResult, Decision, EvidencePayload, StoreSnapshot
+from app.data_provider.fixture_provider import UnknownFixtureStore
 from app.stages.check import run_checks
 from app.stages.commit import build_evidence_payload, commit
 from app.stages.decide import decide
@@ -44,6 +45,25 @@ class UnderwriteRequest(BaseModel):
 class DecisionWithEvidence(BaseModel):
     decision: Decision
     evidence: EvidencePayload | None
+
+
+class OrderSummary(BaseModel):
+    """A trimmed, still PII-free view of a NormalizedOrder for the seller's
+    order-picker UI — no customer_ref or shipping_address_hash, since the
+    picker has no use for them and there's no reason to widen the response
+    surface beyond what's actually displayed."""
+
+    id: str
+    placed_at: str
+    total_amount: float
+    fulfilled: bool
+    has_delivery_scan: bool
+
+
+class StoreOrdersResponse(BaseModel):
+    store_id: str
+    domain: str
+    orders: list[OrderSummary]
 
 
 def _sse(event: str, data: dict) -> str:
@@ -120,6 +140,32 @@ async def _underwrite_stream(request: UnderwriteRequest) -> AsyncIterator[str]:
     except Exception as exc:  # noqa: BLE001 — surfaced to the client, not swallowed
         logger.exception("underwrite pipeline failed for store %s", request.store_id)
         yield _sse("error", {"message": str(exc)})
+
+
+@router.get("/stores/{store_id}/orders", response_model=StoreOrdersResponse)
+async def get_store_orders(store_id: str) -> StoreOrdersResponse:
+    """Read-only: ingests (or reuses the cached snapshot for) a store and
+    returns its orders, for the seller's order-picker UI to select which
+    ones to bundle into a receivable — a step that necessarily comes
+    before POST /underwrite runs the checks against that same selection."""
+    try:
+        snapshot = await ingest(store_id)
+    except UnknownFixtureStore as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StoreOrdersResponse(
+        store_id=snapshot.store_id,
+        domain=snapshot.shop.domain,
+        orders=[
+            OrderSummary(
+                id=o.id,
+                placed_at=o.placed_at.isoformat(),
+                total_amount=o.total_amount,
+                fulfilled=o.fulfilled,
+                has_delivery_scan=o.has_delivery_scan,
+            )
+            for o in snapshot.orders
+        ],
+    )
 
 
 @router.get("/decisions/{receivable_id}", response_model=DecisionWithEvidence)
