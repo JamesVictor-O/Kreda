@@ -1,30 +1,26 @@
+"use client";
+
 import Link from "next/link";
 import { cn } from "@/lib/cn";
-import { formatCurrency, formatDate, formatNumber, daysUntil } from "@/lib/dashboard/format";
-import {
-  ACTIVE_POSITIONS,
-  SETTLED_POSITIONS,
-  elapsedFraction,
-  type InvestorPosition,
-} from "@/lib/dashboard/investor";
+import { formatCurrency, formatNumber, daysUntil } from "@/lib/dashboard/format";
+import { useInvestorPositions, type InvestorPosition } from "@/lib/contracts/use-investor-positions";
 import { PortfolioStatRow } from "@/components/dashboard/portfolio/stat-row";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ButtonLink } from "@/components/ui/button";
 
-function PositionRow({ position, settled }: { position: InvestorPosition; settled: boolean }) {
-  const { advance, principal, returnAmount } = position;
-  const accrued = settled ? returnAmount : returnAmount * elapsedFraction(advance);
-  const days = daysUntil(advance.expectedSettlementAt);
+function PositionRow({ position }: { position: InvestorPosition }) {
+  const { vault, principal, settled } = position;
+  const days = daysUntil(vault.expectedSettlementAt);
 
   return (
     <li>
       <Link
-        href={`/investor/portfolio/${advance.id}`}
-        className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg px-3 py-3.5 transition-colors duration-150 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:grid-cols-[1.6fr_repeat(3,0.9fr)_1fr] sm:items-center sm:gap-3"
+        href={`/investor/vaults/${vault.receivableId}`}
+        className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg px-3 py-3.5 transition-colors duration-150 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:grid-cols-[1.6fr_repeat(2,0.9fr)_1fr] sm:items-center sm:gap-3"
       >
         <div className="min-w-0">
-          <span className="font-mono text-sm text-foreground">#{advance.receivableId}</span>
-          <p className="mt-0.5 truncate text-sm text-muted-foreground">{advance.storeName}</p>
+          <span className="font-mono text-sm text-foreground">#{vault.receivableId}</span>
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">{vault.storeName}</p>
         </div>
 
         <div className="sm:text-right">
@@ -43,13 +39,6 @@ function PositionRow({ position, settled }: { position: InvestorPosition; settle
 
         <div className="sm:text-right">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground sm:hidden">
-            {settled ? "Realized yield" : "Accrued yield"}
-          </p>
-          <p className="font-mono text-sm text-foreground">{formatCurrency(accrued)}</p>
-        </div>
-
-        <div className="sm:text-right">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground sm:hidden">
             Status
           </p>
           <span
@@ -58,7 +47,7 @@ function PositionRow({ position, settled }: { position: InvestorPosition; settle
               settled ? "bg-foreground/[0.06] text-foreground" : "bg-primary/10 text-primary",
             )}
           >
-            {settled ? `Settled ${formatDate(advance.settledAt!)}` : days > 0 ? `${days}d left` : "Settling"}
+            {settled ? "Settled" : days > 0 ? `${days}d left` : "Settling"}
           </span>
         </div>
       </Link>
@@ -100,7 +89,7 @@ function PositionSection({
         ) : (
           <ul className="divide-y divide-border">
             {positions.map((position) => (
-              <PositionRow key={position.advance.id} position={position} settled={settled} />
+              <PositionRow key={position.vault.receivableId} position={position} />
             ))}
           </ul>
         )}
@@ -110,6 +99,11 @@ function PositionSection({
 }
 
 export default function PortfolioPage() {
+  const state = useInvestorPositions();
+  const positions = state.status === "ready" ? state.positions : [];
+  const active = positions.filter((p) => !p.settled);
+  const settled = positions.filter((p) => p.settled);
+
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-0">
       <div>
@@ -117,25 +111,37 @@ export default function PortfolioPage() {
         <p className="mt-1.5 text-sm text-muted-foreground">Receivables you&rsquo;re funding on Kreda</p>
       </div>
 
-      <div className="mt-8">
-        <PortfolioStatRow />
-      </div>
+      {state.status === "error" && (
+        <p role="alert" className="mt-6 text-sm text-danger">
+          Couldn&apos;t load your positions from chain: {state.message}
+        </p>
+      )}
 
-      <PositionSection
-        title="Active"
-        positions={ACTIVE_POSITIONS}
-        settled={false}
-        emptyTitle="No active positions"
-        emptyDescription="Fund a receivable and it will show up here with its settlement countdown."
-      />
+      {state.status === "loading" ? (
+        <p className="mt-8 text-sm text-muted-foreground">Loading positions from chain…</p>
+      ) : (
+        <>
+          <div className="mt-8">
+            <PortfolioStatRow positions={positions} />
+          </div>
 
-      <PositionSection
-        title="Settled"
-        positions={SETTLED_POSITIONS}
-        settled={true}
-        emptyTitle="Nothing settled yet"
-        emptyDescription="Positions move here once Settlement.confirmPayout() has run and proceeds are redeemable."
-      />
+          <PositionSection
+            title="Active"
+            positions={active}
+            settled={false}
+            emptyTitle="No active positions"
+            emptyDescription="Fund a receivable and it will show up here with its settlement countdown."
+          />
+
+          <PositionSection
+            title="Settled"
+            positions={settled}
+            settled={true}
+            emptyTitle="Nothing settled yet"
+            emptyDescription="Positions move here once Settlement.confirmPayout() has run and proceeds are redeemable."
+          />
+        </>
+      )}
     </div>
   );
 }
