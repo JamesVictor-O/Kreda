@@ -1,0 +1,8 @@
+{
+  "chainId": 677,
+  "agentRegistry": "0xc2B0D2A7e858F13B349843fF87dBF4EBF9227F49",
+  "attestation": "0xF7602C048F8C7Cc5E8c514522D633eb9A16a3a1B",
+  "settlement": "0x15B9E263B6E896d4D8F0D9c89878678aa6abAdeC",
+  "agent": "0x8c9c6EcBE917fa992D6Ac777C3FE78324D0baa6f",
+  "oracleSigner": "0x655ffAddCEeb77Ee32b6b314922De8007164CEB9"
+}
