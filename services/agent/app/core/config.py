@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     mainnet_rpc_url: str = "https://rpc.botchain.ai"
     chain_id: int = 968
 
+    @property
+    def rpc_url(self) -> str:
+        return self.mainnet_rpc_url if self.chain_id == 677 else self.testnet_rpc_url
+
     # "fixture" (default) or "shopify" — see app/data_provider. Fixture is
     # what the demo and tests run against; Shopify's custom-app token flow
     # is unverified against a live store, see app/shopify/client.py.

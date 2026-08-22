@@ -14,10 +14,15 @@ services:
         value: 3.11.9
       - key: KREDA_DATA_PROVIDER
         value: fixture
-      - key: TESTNET_RPC_URL
-        value: https://rpc.bohr.life
+      - key: MAINNET_RPC_URL
+        value: https://rpc.botchain.ai
       - key: CHAIN_ID
-        value: "968"
+        value: "677"
+      # Textually identical to the testnet addresses -- not a mistake, see
+      # apps/web/lib/contracts/addresses.ts's comment on why. Attestation
+      # submission goes to whichever RPC settings.rpc_url resolves to
+      # (mainnet, since CHAIN_ID is 677), a separate independent contract
+      # from testnet's despite the matching address.
       - key: ATTESTATION_CONTRACT_ADDRESS
         value: "0xF7602C048F8C7Cc5E8c514522D633eb9A16a3a1B"
       - key: AGENT_REGISTRY_CONTRACT_ADDRESS

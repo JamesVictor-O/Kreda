@@ -72,7 +72,7 @@ def _client() -> Web3:
     # raises on any call that touches a block (get_transaction_count
     # included). Without this middleware every write silently can't build
     # a transaction at all.
-    w3 = Web3(Web3.HTTPProvider(settings.testnet_rpc_url))
+    w3 = Web3(Web3.HTTPProvider(settings.rpc_url))
     w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return w3
 
