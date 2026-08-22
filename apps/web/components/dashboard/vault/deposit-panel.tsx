@@ -2,10 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BaseError, parseUnits } from "viem";
+import { parseUnits } from "viem";
 import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
 import { formatBps, formatCurrency, formatDate, formatNumber } from "@/lib/dashboard/format";
 import { estimateInvestorPosition } from "@/lib/dashboard/calc";
+import { friendlyWalletErrorMessage } from "@/lib/wallet-error";
 import type { VaultOffering } from "@/lib/dashboard/types";
 import { Button } from "@/components/ui/button";
 import { IconCheck } from "@/components/ui/icons";
@@ -14,22 +15,6 @@ import { TESTNET_CHAIN_ID, TESTNET_VAULTS } from "@/lib/contracts/addresses";
 import { botChainTestnet } from "@/lib/chains";
 
 type Stage = "idle" | "approving" | "depositing" | "deposited";
-
-/** viem's BaseError.message is a multi-line dev-facing dump (calldata,
- * contract addresses, a docs link, the viem version) -- shortMessage is
- * the one-line human summary it's built from. Wallet rejection gets its
- * own copy since "User rejected the request." reads like something went
- * wrong rather than something the user chose to do. */
-function friendlyErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof BaseError) {
-    if (/rejected|denied/i.test(error.shortMessage)) {
-      return "You rejected the transaction in your wallet.";
-    }
-    return error.shortMessage;
-  }
-  if (error instanceof Error) return error.message;
-  return fallback;
-}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -112,7 +97,7 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
       setDepositTxHash(depositHash);
       setStage("deposited");
     } catch (error) {
-      setErrorMessage(friendlyErrorMessage(error, "Deposit failed."));
+      setErrorMessage(friendlyWalletErrorMessage(error, "Deposit failed."));
       setStage("idle");
     }
   }
