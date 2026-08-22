@@ -46,8 +46,41 @@ _ATTESTATION_ABI = [
             {"name": "signature", "type": "bytes"},
         ],
         "outputs": [{"name": "attestationId", "type": "bytes32"}],
-    }
+    },
+    {"type": "error", "name": "AgentNotRegistered", "inputs": []},
+    {"type": "error", "name": "AlreadySubmitted", "inputs": []},
+    {"type": "error", "name": "InvalidSignature", "inputs": []},
+    {"type": "error", "name": "ZeroReceivableId", "inputs": []},
 ]
+
+# Maps each custom error's 4-byte selector (cast sig "ErrorName()") to a
+# message worth showing a seller. web3.py surfaces an undecoded revert as
+# the raw selector twice over -- e.g. str(exc) == "('0x9fbfc589',
+# '0x9fbfc589')" -- rather than the error name, even with the error ABI
+# above supplied, so this is matched by substring against str(exc)
+# instead of relying on that decoding.
+_KNOWN_REVERT_MESSAGES = {
+    "0x83bcfb47": (  # AgentNotRegistered()
+        "The underwriter agent isn't registered in AgentRegistry on this chain yet."
+    ),
+    "0x9fbfc589": (  # AlreadySubmitted()
+        "This exact receivable was already attested on-chain. Select a different "
+        "set of orders -- the same store, same orders always derives the same "
+        "receivable id, so resubmitting it collides with the earlier attestation."
+    ),
+    "0x8baa579f": (  # InvalidSignature()
+        "The EIP-712 signature didn't verify against the registered agent address."
+    ),
+    "0xba8c5f7a": "The derived receivable id was empty.",  # ZeroReceivableId()
+}
+
+
+def _friendly_revert_message(error: Exception) -> str | None:
+    text = str(error)
+    for selector, message in _KNOWN_REVERT_MESSAGES.items():
+        if selector in text:
+            return message
+    return None
 
 _AGENT_REGISTRY_ABI = [
     {
@@ -102,15 +135,21 @@ def submit_attestation(record: AttestationRecordFields, signature: bytes) -> str
         record.agent,
         record.approved,
     )
-    tx = contract.functions.submit(record_tuple, signature).build_transaction(
-        {
-            "from": account.address,
-            "nonce": w3.eth.get_transaction_count(account.address),
-            "chainId": settings.chain_id,
-        }
-    )
-    signed_tx = account.sign_transaction(tx)
-    tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    try:
+        tx = contract.functions.submit(record_tuple, signature).build_transaction(
+            {
+                "from": account.address,
+                "nonce": w3.eth.get_transaction_count(account.address),
+                "chainId": settings.chain_id,
+            }
+        )
+        signed_tx = account.sign_transaction(tx)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+    except Exception as exc:
+        friendly = _friendly_revert_message(exc)
+        if friendly:
+            raise RuntimeError(friendly) from exc
+        raise
     logger.info("submitted attestation tx %s", tx_hash.hex())
     return f"0x{tx_hash.hex()}"
 
