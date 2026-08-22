@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAccount, useDisconnect } from "wagmi";
 import { cn } from "@/lib/cn";
 import { formatCurrency, truncateAddress } from "@/lib/dashboard/format";
-import { INVESTOR_USDC_BALANCE } from "@/lib/dashboard/fixtures";
+import { useInvestorBalance } from "@/lib/contracts/use-investor-balance";
 import { ROLE_CONFIG, type DashboardRole } from "@/lib/dashboard/role-config";
 
 export function SidebarContent({
@@ -20,6 +20,7 @@ export function SidebarContent({
   const { disconnect } = useDisconnect();
   const { navItems, brandLabel, identity } = ROLE_CONFIG[role];
   const overviewHref = navItems[0]!.href;
+  const balanceState = useInvestorBalance();
 
   return (
     <div className="flex h-full flex-col">
@@ -87,7 +88,11 @@ export function SidebarContent({
             {address ? truncateAddress(address) : "Not connected"}
           </span>
           <span className="mt-0.5 block font-mono text-xs leading-tight text-muted-foreground">
-            {formatCurrency(INVESTOR_USDC_BALANCE)} USDC available
+            {balanceState.status === "ready"
+              ? `${formatCurrency(balanceState.balance)} USDT available`
+              : balanceState.status === "error"
+                ? "Couldn't load balance"
+                : "Loading balance…"}
           </span>
         </button>
       ) : (

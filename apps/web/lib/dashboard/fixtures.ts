@@ -23,9 +23,6 @@ export const INVESTOR: PersonAccount = {
   walletAddress: "0x9e2c4a7f1d3b6805c2e9f4a7c1e5b3d8f0a4c2e7",
 };
 
-/** Stablecoin available to deposit, shown in the investor sidebar. */
-export const INVESTOR_USDC_BALANCE = 84_600;
-
 export const STORE: StoreConnection = {
   platform: "shopify",
   storeName: "Ada Commerce Store",
