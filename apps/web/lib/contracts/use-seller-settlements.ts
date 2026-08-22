@@ -3,17 +3,22 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { createPublicClient, http, type Address } from "viem";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 import { receivableVaultAbi, settlementAbi } from "@/lib/contracts/abis";
-import { TESTNET_CHAIN_ID, TESTNET_VAULTS, contractAddresses } from "@/lib/contracts/addresses";
+import {
+  ACTIVE_ATTESTATION_DEPLOY_BLOCK,
+  ACTIVE_CHAIN_ID,
+  ACTIVE_STABLECOIN,
+  ACTIVE_VAULTS,
+  contractAddresses,
+} from "@/lib/contracts/addresses";
 import { useSellerAttestations } from "@/lib/contracts/use-seller-attestations";
 
-// Same floor as lib/contracts/indexer.ts's ATTESTATION_DEPLOY_BLOCK —
-// Settlement.sol deploys in the same protocol script as Attestation.sol,
+// Same floor as lib/contracts/indexer.ts's ACTIVE_ATTESTATION_DEPLOY_BLOCK
+// — Settlement.sol deploys in the same protocol script as Attestation.sol,
 // so this is always a safe (if slightly generous) lower bound for its
 // logs too.
-const SETTLEMENT_DEPLOY_BLOCK = BigInt(20_461_178);
-const STABLECOIN_DECIMALS = 6;
+const SETTLEMENT_DEPLOY_BLOCK = ACTIVE_ATTESTATION_DEPLOY_BLOCK;
 
 export interface SellerSettlement {
   receivableId: string;
@@ -40,7 +45,7 @@ type FetchState =
   | { status: "ready"; settlements: SellerSettlement[] };
 
 /** The connected wallet's real settlement status, one entry per approved
- * attestation that already has a deployed vault (see TESTNET_VAULTS — a
+ * attestation that already has a deployed vault (see ACTIVE_VAULTS — a
  * receivable approved through /seller/new-advance has no vault until
  * DeployVault.s.sol is run against it, so it won't show up here yet).
  * "Settled" comes from ReceivableVault.settled(); the payout amount and
@@ -59,13 +64,13 @@ export function useSellerSettlements(): SellerSettlementsState {
     async function run() {
       if (attestationsState.status !== "ready") return;
       try {
-        const client = createPublicClient({ chain: botChainTestnet, transport: http() });
-        const addresses = contractAddresses(TESTNET_CHAIN_ID);
+        const client = createPublicClient({ chain: activeChain, transport: http() });
+        const addresses = contractAddresses(ACTIVE_CHAIN_ID);
 
         const matched = attestationsState.attestations
           .filter((a) => a.approved)
           .flatMap((attestation) => {
-            const vaultConfig = TESTNET_VAULTS.find(
+            const vaultConfig = ACTIVE_VAULTS.find(
               (v) => v.attestationId.toLowerCase() === attestation.attestationId.toLowerCase(),
             );
             return vaultConfig ? [{ attestation, vaultConfig }] : [];
@@ -105,7 +110,7 @@ export function useSellerSettlements(): SellerSettlementsState {
                 const block = await client.getBlock({ blockNumber: log.blockNumber! });
                 settledAt = new Date(Number(block.timestamp) * 1000).toISOString().slice(0, 10);
                 settlementTxHash = log.transactionHash!;
-                payoutAmount = Number(log.args.amount ?? BigInt(0)) / 10 ** STABLECOIN_DECIMALS;
+                payoutAmount = Number(log.args.amount ?? BigInt(0)) / 10 ** ACTIVE_STABLECOIN.decimals;
               }
             }
 

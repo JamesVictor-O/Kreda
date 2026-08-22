@@ -34,11 +34,14 @@ const connectors = [
 ];
 
 export const wagmiConfig = createConfig({
-  chains: [botChainTestnet, botChainMainnet],
+  // Mainnet first — it's config.chains[0], wagmi's fallback default when
+  // no target chainId is otherwise specified. Testnet stays listed so a
+  // connected wallet can still switch to it for dev/demo purposes.
+  chains: [botChainMainnet, botChainTestnet],
   connectors,
   ssr: true,
   transports: {
-    [botChainTestnet.id]: http(),
     [botChainMainnet.id]: http(),
+    [botChainTestnet.id]: http(),
   },
 });

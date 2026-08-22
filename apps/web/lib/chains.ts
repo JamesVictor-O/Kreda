@@ -1,4 +1,5 @@
 import { defineChain } from "viem";
+import { ACTIVE_CHAIN_ID, MAINNET_CHAIN_ID } from "./contracts/addresses";
 
 export const botChainMainnet = defineChain({
   id: 677,
@@ -24,3 +25,7 @@ export const botChainTestnet = defineChain({
   },
   testnet: true,
 });
+
+/// The chain real-data reads/writes target by default — see
+/// ACTIVE_CHAIN_ID in lib/contracts/addresses.ts for how to flip this.
+export const activeChain = ACTIVE_CHAIN_ID === MAINNET_CHAIN_ID ? botChainMainnet : botChainTestnet;

@@ -11,8 +11,8 @@ import type { VaultOffering } from "@/lib/dashboard/types";
 import { Button } from "@/components/ui/button";
 import { IconCheck } from "@/components/ui/icons";
 import { erc20Abi, receivableVaultAbi } from "@/lib/contracts/abis";
-import { TESTNET_CHAIN_ID, TESTNET_VAULTS } from "@/lib/contracts/addresses";
-import { botChainTestnet } from "@/lib/chains";
+import { ACTIVE_CHAIN_ID, ACTIVE_VAULTS } from "@/lib/contracts/addresses";
+import { activeChain } from "@/lib/chains";
 
 type Stage = "idle" | "approving" | "depositing" | "deposited";
 
@@ -27,15 +27,15 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 export function DepositPanel({ vault }: { vault: VaultOffering }) {
   // Look up by address rather than assuming a single real vault — see
-  // TESTNET_VAULTS, which now holds several. A fixture vault's address
+  // ACTIVE_VAULTS, which now holds several. A fixture vault's address
   // never matches any real deployment.
-  const realVaultConfig = TESTNET_VAULTS.find(
+  const realVaultConfig = ACTIVE_VAULTS.find(
     (v) => v.vault.toLowerCase() === vault.vaultAddress.toLowerCase(),
   );
   const isRealVault = !!realVaultConfig;
-  // Real vaults are backed by testnet USDT (see contracts/deployments/
-  // testnet-vaults.json); fixture vaults keep the placeholder USDC label
-  // they always had.
+  // Real vaults are backed by USDT on whichever chain is active (see
+  // ACTIVE_STABLECOIN in lib/contracts/addresses.ts); fixture vaults keep
+  // the placeholder USDC label they always had.
   const currencyLabel = isRealVault ? "USDT" : "USDC";
 
   const remaining = Math.max(0, vault.targetAmount - vault.raisedAmount);
@@ -47,7 +47,7 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
   const { address, chainId, isConnected } = useAccount();
   const { switchChain, isPending: switching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
-  const publicClient = usePublicClient({ chainId: TESTNET_CHAIN_ID });
+  const publicClient = usePublicClient({ chainId: ACTIVE_CHAIN_ID });
 
   const position = estimateInvestorPosition(vault.faceValue);
   // First deposit into an empty ERC-4626 vault mints shares 1:1 against
@@ -80,7 +80,7 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
           abi: erc20Abi,
           functionName: "approve",
           args: [realVaultConfig.vault as `0x${string}`, amountRaw],
-          chainId: TESTNET_CHAIN_ID,
+          chainId: ACTIVE_CHAIN_ID,
         });
         await publicClient.waitForTransactionReceipt({ hash: approveHash });
       }
@@ -91,7 +91,7 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
         abi: receivableVaultAbi,
         functionName: "deposit",
         args: [amountRaw, address],
-        chainId: TESTNET_CHAIN_ID,
+        chainId: ACTIVE_CHAIN_ID,
       });
       await publicClient.waitForTransactionReceipt({ hash: depositHash });
       setDepositTxHash(depositHash);
@@ -114,21 +114,21 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
     }, 600);
   }
 
-  if (isRealVault && (!isConnected || chainId !== TESTNET_CHAIN_ID)) {
+  if (isRealVault && (!isConnected || chainId !== ACTIVE_CHAIN_ID)) {
     return (
       <div className="rounded-xl border border-border bg-background p-5 sm:p-6">
         <p className="text-sm text-muted-foreground">
-          Connect a wallet on {botChainTestnet.name} to deposit into this vault.
+          Connect a wallet on {activeChain.name} to deposit into this vault.
         </p>
         {isConnected && (
           <Button
             type="button"
             className="mt-4"
-            onClick={() => switchChain({ chainId: TESTNET_CHAIN_ID })}
+            onClick={() => switchChain({ chainId: ACTIVE_CHAIN_ID })}
             disabled={switching}
             aria-busy={switching}
           >
-            {switching ? "Switching…" : `Switch to ${botChainTestnet.name}`}
+            {switching ? "Switching…" : `Switch to ${activeChain.name}`}
           </Button>
         )}
       </div>
@@ -153,7 +153,7 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
             </p>
             {depositTxHash && (
               <a
-                href={`${botChainTestnet.blockExplorers.default.url}/tx/${depositTxHash}`}
+                href={`${activeChain.blockExplorers.default.url}/tx/${depositTxHash}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 inline-block font-mono text-xs text-foreground underline decoration-border underline-offset-4 transition-colors duration-150 hover:text-primary hover:decoration-primary"

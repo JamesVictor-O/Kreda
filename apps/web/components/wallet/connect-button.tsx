@@ -1,13 +1,14 @@
 "use client";
 
 import { useAccount, useConnect, useDisconnect, useSwitchChain, type Connector } from "wagmi";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 import { truncateAddress } from "@/lib/dashboard/format";
 import { friendlyWalletErrorMessage } from "@/lib/wallet-error";
 import { Button } from "@/components/ui/button";
 
-/** Deploys go to testnet first, always — see CLAUDE.md. Mainnet is for release. */
-const TARGET_CHAIN = botChainTestnet;
+/** See ACTIVE_CHAIN_ID in lib/contracts/addresses.ts for how to flip
+ * this back to testnet. */
+const TARGET_CHAIN = activeChain;
 
 /** Plain mobile browsers never get window.ethereum injected — only a
  * desktop extension or a wallet app's own in-app browser does. Checked at

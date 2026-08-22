@@ -1,14 +1,14 @@
-import { TESTNET_CHAIN_ID, TESTNET_VAULTS, contractAddresses } from "@/lib/contracts/addresses";
+import { ACTIVE_CHAIN_ID, ACTIVE_STABLECOIN, ACTIVE_VAULTS, contractAddresses } from "@/lib/contracts/addresses";
 import { getAttestationRecord, getVaultOnChainState } from "@/lib/contracts/reads";
 import { gradeLabelFromCode } from "@/lib/contracts/grade";
 import type { CheckResult, VaultOffering } from "@/lib/dashboard/types";
 
 /// Real, on-chain-backed vaults — everything else on the investor
 /// dashboard still runs on lib/dashboard/fixtures.ts. See
-/// contracts/deployments/testnet-vaults.json for how these came to exist:
-/// a real underwrite call against the live agent service, a real signed
-/// EIP-712 attestation submitted on-chain, then a vault deployed against
-/// that attestation.
+/// contracts/deployments/testnet-vaults.json (and mainnet-vaults.json,
+/// once one exists) for how these came to exist: a real underwrite call
+/// against the live agent service, a real signed EIP-712 attestation
+/// submitted on-chain, then a vault deployed against that attestation.
 
 /// Per-vault metadata not available from on-chain reads alone — the six
 /// check results are real, copied verbatim from the actual
@@ -45,16 +45,14 @@ const VAULT_METADATA: Record<string, { storeName: string; attestationTx: string;
   },
 };
 
-const STABLECOIN_DECIMALS = 6;
-
 function toDollars(raw: bigint): number {
-  return Number(raw) / 10 ** STABLECOIN_DECIMALS;
+  return Number(raw) / 10 ** ACTIVE_STABLECOIN.decimals;
 }
 
 async function fetchVaultOffering(
-  vaultConfig: (typeof TESTNET_VAULTS)[number],
+  vaultConfig: (typeof ACTIVE_VAULTS)[number],
 ): Promise<VaultOffering & { gradeLabel: string }> {
-  const addresses = contractAddresses(TESTNET_CHAIN_ID);
+  const addresses = contractAddresses(ACTIVE_CHAIN_ID);
   const metadata = VAULT_METADATA[vaultConfig.receivableId];
 
   const [record, vaultState] = await Promise.all([
@@ -91,23 +89,24 @@ async function fetchVaultOffering(
 }
 
 /** Real reads only — Attestation.get() and the vault's own state, both
- * live against BOT Chain testnet. See deposit-panel.tsx for the real
- * write (ReceivableVault.deposit()). Returns null for a receivableId with
- * no deployed vault (see TESTNET_VAULTS — most approved attestations
- * don't have one yet; that's a separate manual deploy step). */
+ * live against whichever chain is active (see ACTIVE_CHAIN_ID). See
+ * deposit-panel.tsx for the real write (ReceivableVault.deposit()).
+ * Returns null for a receivableId with no deployed vault (see
+ * ACTIVE_VAULTS — most approved attestations don't have one yet; that's
+ * a separate manual deploy step). */
 export async function getRealVaultOfferingById(
   receivableId: string,
 ): Promise<(VaultOffering & { gradeLabel: string }) | null> {
-  const vaultConfig = TESTNET_VAULTS.find((v) => v.receivableId === receivableId);
+  const vaultConfig = ACTIVE_VAULTS.find((v) => v.receivableId === receivableId);
   if (!vaultConfig) return null;
   return fetchVaultOffering(vaultConfig);
 }
 
-/** Every real vault currently deployed — see TESTNET_VAULTS. There's no
+/** Every real vault currently deployed — see ACTIVE_VAULTS. There's no
  * on-chain way to discover these (no factory contract emits a
  * discoverable event; each is deployed one at a time via
  * script/DeployVault.s.sol), so this list only grows when that registry
  * is updated by hand. */
 export async function getAllRealVaultOfferings(): Promise<(VaultOffering & { gradeLabel: string })[]> {
-  return Promise.all(TESTNET_VAULTS.map(fetchVaultOffering));
+  return Promise.all(ACTIVE_VAULTS.map(fetchVaultOffering));
 }

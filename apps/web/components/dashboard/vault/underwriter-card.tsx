@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useReadContract } from "wagmi";
 import { HashLink } from "@/components/dashboard/hash-link";
 import { agentRegistryAbi } from "@/lib/contracts/abis";
-import { TESTNET_CHAIN_ID, contractAddresses } from "@/lib/contracts/addresses";
+import { ACTIVE_CHAIN_ID, contractAddresses } from "@/lib/contracts/addresses";
 
 /// Matches AGENT_NAME in contracts/.env at deploy time (see
 /// contracts/script/Deploy.s.sol) — the registered name is fetchable via
@@ -26,14 +26,14 @@ function Stat({ label, value }: { label: string; value: string }) {
  * only ever calls recordOutcome(agent, true) in v1 (no default-tracking path
  * yet), so the two numbers are the same thing on-chain today. */
 export function UnderwriterCard() {
-  const addresses = contractAddresses(TESTNET_CHAIN_ID);
+  const addresses = contractAddresses(ACTIVE_CHAIN_ID);
 
   const { data, isLoading, isError } = useReadContract({
     address: addresses.agentRegistry as `0x${string}`,
     abi: agentRegistryAbi,
     functionName: "agentStats",
     args: [addresses.agent as `0x${string}`],
-    chainId: TESTNET_CHAIN_ID,
+    chainId: ACTIVE_CHAIN_ID,
   });
 
   const zero = BigInt(0);

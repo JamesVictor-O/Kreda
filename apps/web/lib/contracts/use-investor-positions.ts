@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { createPublicClient, http, type Address } from "viem";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 import { receivableVaultAbi } from "@/lib/contracts/abis";
-import { TESTNET_VAULTS } from "@/lib/contracts/addresses";
+import { ACTIVE_STABLECOIN, ACTIVE_VAULTS } from "@/lib/contracts/addresses";
 import { getAllRealVaultOfferings } from "@/lib/contracts/real-vault";
 import type { VaultOffering } from "@/lib/dashboard/types";
 
@@ -21,15 +21,13 @@ export type InvestorPositionsState =
   | { status: "error"; message: string }
   | { status: "ready"; positions: InvestorPosition[] };
 
-const STABLECOIN_DECIMALS = 6;
-
 type FetchState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; positions: InvestorPosition[] };
 
 /** The connected wallet's real share balance in every known real vault
- * (see TESTNET_VAULTS). balanceOf doubles as principal still deposited:
+ * (see ACTIVE_VAULTS). balanceOf doubles as principal still deposited:
  * shares mint 1:1 against assets on an empty vault, and no redemption is
  * possible before Settled (ReceivableVault.maxRedeem returns 0), so
  * nothing can move a holder's balance out of that 1:1 relationship before
@@ -44,11 +42,11 @@ export function useInvestorPositions(): InvestorPositionsState {
 
     async function run() {
       try {
-        const client = createPublicClient({ chain: botChainTestnet, transport: http() });
+        const client = createPublicClient({ chain: activeChain, transport: http() });
         const [offerings, balances, settledFlags] = await Promise.all([
           getAllRealVaultOfferings(),
           Promise.all(
-            TESTNET_VAULTS.map((v) =>
+            ACTIVE_VAULTS.map((v) =>
               client.readContract({
                 address: v.vault as Address,
                 abi: receivableVaultAbi,
@@ -58,7 +56,7 @@ export function useInvestorPositions(): InvestorPositionsState {
             ),
           ),
           Promise.all(
-            TESTNET_VAULTS.map((v) =>
+            ACTIVE_VAULTS.map((v) =>
               client.readContract({
                 address: v.vault as Address,
                 abi: receivableVaultAbi,
@@ -74,7 +72,7 @@ export function useInvestorPositions(): InvestorPositionsState {
           if (shares > BigInt(0)) {
             positions.push({
               vault,
-              principal: Number(shares) / 10 ** STABLECOIN_DECIMALS,
+              principal: Number(shares) / 10 ** ACTIVE_STABLECOIN.decimals,
               settled: settledFlags[i],
             });
           }

@@ -1,21 +1,17 @@
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 import { attestationAbi } from "@/lib/contracts/abis";
-import { TESTNET_CHAIN_ID, contractAddresses } from "@/lib/contracts/addresses";
+import { ACTIVE_ATTESTATION_DEPLOY_BLOCK, ACTIVE_CHAIN_ID, ACTIVE_STABLECOIN, contractAddresses } from "@/lib/contracts/addresses";
 import { gradeLabelFromCode } from "@/lib/contracts/grade";
 
 /// On-chain indexing via eth_getLogs rather than a database — the
 /// contracts have no "list all attestations" function, but
 /// Attestation.AttestationSubmitted is emitted for every one, approved or
-/// declined, and testnet's log volume is small enough that a full scan
-/// from the deployment block is fast. No factory contract deploys
+/// declined, and log volume is small enough that a full scan from the
+/// deployment block is fast. No factory contract deploys
 /// ReceivableVaults (they're deployed one at a time via
 /// script/DeployVault.s.sol), so vaults aren't indexable this way — see
-/// TESTNET_VAULTS in addresses.ts, maintained by hand.
-
-/// Block Attestation.sol was deployed at — see
-/// contracts/broadcast/Deploy.s.sol/968/run-latest.json.
-const ATTESTATION_DEPLOY_BLOCK = BigInt(20_461_178);
+/// ACTIVE_VAULTS in addresses.ts, maintained by hand.
 
 const ATTESTATION_SUBMITTED_EVENT = parseAbiItem(
   "event AttestationSubmitted(bytes32 indexed attestationId, address indexed agent, address indexed seller, bool approved)",
@@ -43,10 +39,8 @@ export interface IndexedAttestation {
   committedAt: string;
 }
 
-const STABLECOIN_DECIMALS = 6;
-
 function publicClient() {
-  return createPublicClient({ chain: botChainTestnet, transport: http() });
+  return createPublicClient({ chain: activeChain, transport: http() });
 }
 
 /** Every attestation ever submitted, approved or declined, newest first.
@@ -55,12 +49,12 @@ function publicClient() {
  * be. */
 export async function getAllAttestations(): Promise<IndexedAttestation[]> {
   const client = publicClient();
-  const addresses = contractAddresses(TESTNET_CHAIN_ID);
+  const addresses = contractAddresses(ACTIVE_CHAIN_ID);
 
   const logs = await client.getLogs({
     address: addresses.attestation as Address,
     event: ATTESTATION_SUBMITTED_EVENT,
-    fromBlock: ATTESTATION_DEPLOY_BLOCK,
+    fromBlock: ACTIVE_ATTESTATION_DEPLOY_BLOCK,
     toBlock: "latest",
   });
 
@@ -83,7 +77,7 @@ export async function getAllAttestations(): Promise<IndexedAttestation[]> {
         agent: record.agent,
         approved: record.approved,
         gradeLabel: gradeLabelFromCode(record.grade),
-        faceValue: Number(record.faceValue) / 10 ** STABLECOIN_DECIMALS,
+        faceValue: Number(record.faceValue) / 10 ** ACTIVE_STABLECOIN.decimals,
         advanceRateBps: record.advanceRate,
         confidenceBps: record.confidence,
         expectedSettlementAt: new Date(Number(record.expectedSettlement) * 1000)

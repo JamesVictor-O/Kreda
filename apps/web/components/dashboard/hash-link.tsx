@@ -1,7 +1,7 @@
 "use client";
 
 import { truncateHash } from "@/lib/dashboard/format";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 
 export type HashKind = "tx" | "address" | "opaque";
 
@@ -42,11 +42,11 @@ export function HashLink({
 
   return (
     <a
-      href={`${botChainTestnet.blockExplorers.default.url}${path}`}
+      href={`${activeChain.blockExplorers.default.url}${path}`}
       target="_blank"
       rel="noreferrer"
       title={hash}
-      aria-label={`${label}: ${hash} — view on BOT Chain testnet explorer`}
+      aria-label={`${label}: ${hash} — view on ${activeChain.blockExplorers.default.name}`}
       className="font-mono text-sm text-foreground underline decoration-border underline-offset-4 transition-colors duration-150 hover:text-primary hover:decoration-primary"
     >
       {truncateHash(hash)}

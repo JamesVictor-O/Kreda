@@ -1,5 +1,5 @@
 import { createPublicClient, http } from "viem";
-import { botChainTestnet } from "@/lib/chains";
+import { activeChain } from "@/lib/chains";
 import { attestationAbi, receivableVaultAbi } from "@/lib/contracts/abis";
 
 /// Server-side reads only — a plain viem publicClient rather than wagmi's
@@ -8,7 +8,7 @@ import { attestationAbi, receivableVaultAbi } from "@/lib/contracts/abis";
 /// in client components instead — see deposit-panel.tsx.
 
 const publicClient = createPublicClient({
-  chain: botChainTestnet,
+  chain: activeChain,
   transport: http(),
 });
 
