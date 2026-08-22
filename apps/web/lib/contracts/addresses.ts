@@ -27,6 +27,23 @@ export const TESTNET_VAULTS = [
     asset: "0x75edC9335175Fc0552D51D48439F229c10420fe3", // testnet faucet USDT
     assetDecimals: 6,
   },
+  {
+    // receivableId here is the attestationId's own first 16 hex chars, not
+    // an agent-service pretty id -- see testnet-vaults.json's
+    // receivableIdNote for why (the real one wasn't recoverable).
+    receivableId: "dd282d7160949ed1",
+    attestationId: "0xdd282d7160949ed14ca1eadb64022032bd4998513524d7623dad36c82b6021b4",
+    vault: "0x80E7AEc2c254d21b720811FBc3C5E47FE796E133",
+    asset: "0x75edC9335175Fc0552D51D48439F229c10420fe3",
+    assetDecimals: 6,
+  },
+  {
+    receivableId: "bbc5244632b13b1b",
+    attestationId: "0xbbc5244632b13b1bb0ab42a7f0ab5bf9761328312929cb6c708913e1a1529bd6",
+    vault: "0x90405650c7fdc281382F165B98f3951e33EEe600",
+    asset: "0x75edC9335175Fc0552D51D48439F229c10420fe3",
+    assetDecimals: 6,
+  },
 ] as const;
 
 export function contractAddresses(chainId: number) {

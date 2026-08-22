@@ -7,7 +7,7 @@ import { DepositPanel } from "@/components/dashboard/vault/deposit-panel";
 import { UnderwriterCard } from "@/components/dashboard/vault/underwriter-card";
 import { AttestationArtifact } from "@/components/dashboard/attestation-artifact";
 import { IconArrowLeft } from "@/components/ui/icons";
-import { REAL_VAULT_RECEIVABLE_ID, getRealVaultOffering } from "@/lib/contracts/real-vault";
+import { getRealVaultOfferingById } from "@/lib/contracts/real-vault";
 import type { VaultOffering } from "@/lib/dashboard/types";
 
 export default async function VaultDetailPage({
@@ -17,13 +17,13 @@ export default async function VaultDetailPage({
 }) {
   const { id } = await params;
 
-  // The one receivable with a real on-chain vault reads live from
+  // A receivable with a real deployed vault reads live from
   // Attestation.get() and the vault's own state — see
   // lib/contracts/real-vault.ts. Every other id stays on fixtures.
   let vault: VaultOffering | undefined;
   let gradeLabel: string | undefined;
-  if (id === REAL_VAULT_RECEIVABLE_ID) {
-    const real = await getRealVaultOffering();
+  const real = await getRealVaultOfferingById(id);
+  if (real) {
     vault = real;
     gradeLabel = real.gradeLabel;
   } else {

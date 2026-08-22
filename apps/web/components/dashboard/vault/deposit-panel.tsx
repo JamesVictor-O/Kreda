@@ -15,9 +15,6 @@ import { botChainTestnet } from "@/lib/chains";
 
 type Stage = "idle" | "approving" | "approved" | "depositing" | "deposited";
 
-const REAL_VAULT = TESTNET_VAULTS[0];
-const ASSET_DECIMALS = REAL_VAULT.assetDecimals;
-
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-2.5">
@@ -28,10 +25,16 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function DepositPanel({ vault }: { vault: VaultOffering }) {
-  const isRealVault = vault.vaultAddress.toLowerCase() === REAL_VAULT.vault.toLowerCase();
-  // The real vault is backed by testnet USDT (see contracts/deployments/
+  // Look up by address rather than assuming a single real vault — see
+  // TESTNET_VAULTS, which now holds several. A fixture vault's address
+  // never matches any real deployment.
+  const realVaultConfig = TESTNET_VAULTS.find(
+    (v) => v.vault.toLowerCase() === vault.vaultAddress.toLowerCase(),
+  );
+  const isRealVault = !!realVaultConfig;
+  // Real vaults are backed by testnet USDT (see contracts/deployments/
   // testnet-vaults.json); fixture vaults keep the placeholder USDC label
-  // they always had — this only changes on the one wired path.
+  // they always had.
   const currencyLabel = isRealVault ? "USDT" : "USDC";
 
   const remaining = Math.max(0, vault.targetAmount - vault.raisedAmount);
@@ -54,16 +57,16 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
   const disabled = amount <= 0 || amount > remaining;
 
   async function handleApproveReal() {
-    if (!address) return;
+    if (!address || !realVaultConfig) return;
     setErrorMessage(null);
     setStage("approving");
     try {
-      const amountRaw = parseUnits(amount.toString(), ASSET_DECIMALS);
+      const amountRaw = parseUnits(amount.toString(), realVaultConfig.assetDecimals);
       const hash = await writeContractAsync({
-        address: REAL_VAULT.asset as `0x${string}`,
+        address: realVaultConfig.asset as `0x${string}`,
         abi: erc20Abi,
         functionName: "approve",
-        args: [REAL_VAULT.vault as `0x${string}`, amountRaw],
+        args: [realVaultConfig.vault as `0x${string}`, amountRaw],
         chainId: TESTNET_CHAIN_ID,
       });
       await publicClient?.waitForTransactionReceipt({ hash });
@@ -75,13 +78,13 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
   }
 
   async function handleDepositReal() {
-    if (!address) return;
+    if (!address || !realVaultConfig) return;
     setErrorMessage(null);
     setStage("depositing");
     try {
-      const amountRaw = parseUnits(amount.toString(), ASSET_DECIMALS);
+      const amountRaw = parseUnits(amount.toString(), realVaultConfig.assetDecimals);
       const hash = await writeContractAsync({
-        address: REAL_VAULT.vault as `0x${string}`,
+        address: realVaultConfig.vault as `0x${string}`,
         abi: receivableVaultAbi,
         functionName: "deposit",
         args: [amountRaw, address],

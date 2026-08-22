@@ -9,7 +9,6 @@ import type { CheckResult, VaultOffering } from "@/lib/dashboard/types";
 /// a real underwrite call against the live agent service, a real signed
 /// EIP-712 attestation submitted on-chain, then a vault deployed against
 /// that attestation.
-export const REAL_VAULT_RECEIVABLE_ID = TESTNET_VAULTS[0].receivableId;
 
 /// Per-vault metadata not available from on-chain reads alone — the six
 /// check results are real, copied verbatim from the actual
@@ -92,10 +91,16 @@ async function fetchVaultOffering(
 }
 
 /** Real reads only — Attestation.get() and the vault's own state, both
- * live against BOT Chain testnet. See deposit-panel.tsx for the one real
- * write (ReceivableVault.deposit()). */
-export async function getRealVaultOffering(): Promise<VaultOffering & { gradeLabel: string }> {
-  return fetchVaultOffering(TESTNET_VAULTS[0]);
+ * live against BOT Chain testnet. See deposit-panel.tsx for the real
+ * write (ReceivableVault.deposit()). Returns null for a receivableId with
+ * no deployed vault (see TESTNET_VAULTS — most approved attestations
+ * don't have one yet; that's a separate manual deploy step). */
+export async function getRealVaultOfferingById(
+  receivableId: string,
+): Promise<(VaultOffering & { gradeLabel: string }) | null> {
+  const vaultConfig = TESTNET_VAULTS.find((v) => v.receivableId === receivableId);
+  if (!vaultConfig) return null;
+  return fetchVaultOffering(vaultConfig);
 }
 
 /** Every real vault currently deployed — see TESTNET_VAULTS. There's no
