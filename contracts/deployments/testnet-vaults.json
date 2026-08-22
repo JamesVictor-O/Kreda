@@ -21,6 +21,38 @@
       "store": "harlow-and-finch.myshopify.com (fixture)",
       "grade": "A",
       "attestationTxHash": "0x16c3fd5719fb5644905b4151d35f3eabe2dff698c2586d72f040cd0388983af9"
+    },
+    {
+      "receivableId": "dd282d7160949ed1",
+      "receivableIdNote": "First 16 hex chars of the on-chain attestationId, not an agent-service pretty id -- the real one wasn't recovered before the agent's evidence cache (ephemeral Render disk) expired it. Store/checks are correspondingly unknown; see VAULT_METADATA fallback in real-vault.ts.",
+      "attestationId": "0xdd282d7160949ed14ca1eadb64022032bd4998513524d7623dad36c82b6021b4",
+      "vault": "0x80E7AEc2c254d21b720811FBc3C5E47FE796E133",
+      "name": "Kreda Receivable #2",
+      "symbol": "kRCV-2",
+      "seller": "0x2e5d8B56F9B4770a88794a47C32c177542d2f6ea",
+      "targetAmount": "917116000",
+      "yieldBps": 1100,
+      "feeBps": 200,
+      "maturity": 1789790329,
+      "store": "unknown (evidence no longer cached)",
+      "grade": "A",
+      "attestationTxHash": "0x2d427d9e0cd6534166631829f062e55889f22911aa28e2438c6ae706bf163337"
+    },
+    {
+      "receivableId": "bbc5244632b13b1b",
+      "receivableIdNote": "First 16 hex chars of the on-chain attestationId, not an agent-service pretty id -- the real one wasn't recovered before the agent's evidence cache (ephemeral Render disk) expired it. Store/checks are correspondingly unknown; see VAULT_METADATA fallback in real-vault.ts.",
+      "attestationId": "0xbbc5244632b13b1bb0ab42a7f0ab5bf9761328312929cb6c708913e1a1529bd6",
+      "vault": "0x90405650c7fdc281382F165B98f3951e33EEe600",
+      "name": "Kreda Receivable #3",
+      "symbol": "kRCV-3",
+      "seller": "0x2e5d8B56F9B4770a88794a47C32c177542d2f6ea",
+      "targetAmount": "504033000",
+      "yieldBps": 1100,
+      "feeBps": 200,
+      "maturity": 1789946507,
+      "store": "unknown (evidence no longer cached)",
+      "grade": "A",
+      "attestationTxHash": "0x6382af67008a4a6ac9696906c4b97b49d81fd8b93c76617c151e79083864939e"
     }
   ]
 }
