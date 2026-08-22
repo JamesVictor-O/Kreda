@@ -13,7 +13,7 @@ import { erc20Abi, receivableVaultAbi } from "@/lib/contracts/abis";
 import { TESTNET_CHAIN_ID, TESTNET_VAULTS } from "@/lib/contracts/addresses";
 import { botChainTestnet } from "@/lib/chains";
 
-type Stage = "idle" | "approving" | "approved" | "depositing" | "deposited";
+type Stage = "idle" | "approving" | "depositing" | "deposited";
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -56,42 +56,44 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
   const expectedPayout = shareOfPrincipal * position.payout;
   const disabled = amount <= 0 || amount > remaining;
 
-  async function handleApproveReal() {
-    if (!address || !realVaultConfig) return;
+  // One button drives both steps: approve only runs if the current
+  // allowance doesn't already cover this deposit, then deposit follows
+  // immediately — no separate "Approve" click for the user to miss.
+  async function handleDepositReal() {
+    if (!address || !realVaultConfig || !publicClient) return;
     setErrorMessage(null);
-    setStage("approving");
     try {
       const amountRaw = parseUnits(amount.toString(), realVaultConfig.assetDecimals);
-      const hash = await writeContractAsync({
+
+      const currentAllowance = await publicClient.readContract({
         address: realVaultConfig.asset as `0x${string}`,
         abi: erc20Abi,
-        functionName: "approve",
-        args: [realVaultConfig.vault as `0x${string}`, amountRaw],
-        chainId: TESTNET_CHAIN_ID,
+        functionName: "allowance",
+        args: [address, realVaultConfig.vault as `0x${string}`],
       });
-      await publicClient?.waitForTransactionReceipt({ hash });
-      setStage("approved");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Approval failed.");
-      setStage("idle");
-    }
-  }
 
-  async function handleDepositReal() {
-    if (!address || !realVaultConfig) return;
-    setErrorMessage(null);
-    setStage("depositing");
-    try {
-      const amountRaw = parseUnits(amount.toString(), realVaultConfig.assetDecimals);
-      const hash = await writeContractAsync({
+      if (currentAllowance < amountRaw) {
+        setStage("approving");
+        const approveHash = await writeContractAsync({
+          address: realVaultConfig.asset as `0x${string}`,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [realVaultConfig.vault as `0x${string}`, amountRaw],
+          chainId: TESTNET_CHAIN_ID,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      }
+
+      setStage("depositing");
+      const depositHash = await writeContractAsync({
         address: realVaultConfig.vault as `0x${string}`,
         abi: receivableVaultAbi,
         functionName: "deposit",
         args: [amountRaw, address],
         chainId: TESTNET_CHAIN_ID,
       });
-      await publicClient?.waitForTransactionReceipt({ hash });
-      setDepositTxHash(hash);
+      await publicClient.waitForTransactionReceipt({ hash: depositHash });
+      setDepositTxHash(depositHash);
       setStage("deposited");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Deposit failed.");
@@ -99,22 +101,16 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
     }
   }
 
-  function handleApprove() {
-    if (isRealVault) {
-      void handleApproveReal();
-      return;
-    }
-    setStage("approving");
-    setTimeout(() => setStage("approved"), 800);
-  }
-
   function handleDeposit() {
     if (isRealVault) {
       void handleDepositReal();
       return;
     }
-    setStage("depositing");
-    setTimeout(() => setStage("deposited"), 1000);
+    setStage("approving");
+    setTimeout(() => {
+      setStage("depositing");
+      setTimeout(() => setStage("deposited"), 800);
+    }, 600);
   }
 
   if (isRealVault && (!isConnected || chainId !== TESTNET_CHAIN_ID)) {
@@ -222,27 +218,19 @@ export function DepositPanel({ vault }: { vault: VaultOffering }) {
         </p>
       )}
 
-      <div className="mt-5 flex items-center justify-between gap-4">
+      <div className="mt-5">
         <Button
           type="button"
-          variant="ghost"
-          onClick={handleApprove}
+          className="w-full"
+          onClick={handleDeposit}
           disabled={stage !== "idle" || disabled}
-          aria-busy={stage === "approving"}
+          aria-busy={stage === "approving" || stage === "depositing"}
         >
           {stage === "approving"
-            ? "Approving…"
-            : stage === "approved" || stage === "depositing"
-              ? "Approved"
-              : `Approve ${currencyLabel}`}
-        </Button>
-        <Button
-          type="button"
-          onClick={handleDeposit}
-          disabled={stage !== "approved" || disabled}
-          aria-busy={stage === "depositing"}
-        >
-          {stage === "depositing" ? "Depositing…" : "Deposit"}
+            ? `Approving ${currencyLabel}…`
+            : stage === "depositing"
+              ? "Depositing…"
+              : "Deposit"}
         </Button>
       </div>
     </div>
